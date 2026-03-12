@@ -138,21 +138,22 @@ python run_2d.py
 **Console output** — convergence log and Gaussian fit result:
 
 ```text
-=== データ読み込み完了 ===
-  有効電圧ビン数 I = 28
-  APM 回転数 (平均): 4010.0 rpm
-  移動度粒径 Dmob  = 450.0 nm
-1D カーネル行列 K[28×40] を計算中...
-逆問題解析 (Chahine-Twomey 反復) を開始します...
-  → 312 反復で収束 (χ² = 0.9987)
+=== Data loading complete ===
+  Number of valid voltage bins I = 28
+  APM rotation speed (mean): 4010.0 rpm
+  Mobility diameter Dmob = 450.0 nm
+Computing 1D kernel matrix K[28x40]...
+Computation complete.
+Starting inversion (Chahine-Twomey iteration)...
+  -> Converged after 312 iterations (chi^2 = 0.9987)
 
 === Gaussian Fit Result ===
-  Peak center  μ  = 24.35 fg
-  Std. dev.    σ  =  8.12 fg
-  Amplitude    A  =  0.1273 cm⁻³ fg⁻¹
-  R²               =  0.994
+  Peak centre  mu    = 24.35 fg
+  Std. dev.    sigma =  8.12 fg
+  Amplitude    A     =  0.1273 cm^-3 fg^-1
+  R^2                =  0.994
 
-図を保存しました: ./results/result_1d_your_data_file.jpg
+Figure saved: ./results/result_1d_your_data_file.jpg
 ```
 
 **JPEG figure** (dpi = 600) saved to `OUTPUT_DIR`:
