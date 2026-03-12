@@ -1,8 +1,8 @@
 """
-data_parser.py  ―  APM-CPC 測定データの読み込みとビニング処理
+data_parser.py  ---  Loading and binning of APM-CPC measurement data
 
-CSVヘッダーから電気移動度径 Dmob を自動抽出し、
-上昇・下降スキャンを統合した電圧ビニングを行う。
+Automatically extracts the electrical mobility diameter Dmob from the CSV
+header and performs voltage binning by merging upward and downward scans.
 """
 from __future__ import annotations
 
@@ -13,16 +13,16 @@ from dataclasses import dataclass
 
 @dataclass
 class MeasurementData:
-    """APM-CPC 測定データのビニング処理結果。
+    """Result of binning APM-CPC measurement data.
 
     Attributes:
-        V_array:        電圧ビン代表値 [V],          shape (I,)
-        n_meas:         測定粒子濃度 [cm⁻³],         shape (I,)
-        V_sample_array: CPC 積算吸引体積 [cm³],      shape (I,)
-        t_meas_array:   各ビンの積算測定時間 [s],    shape (I,)
-        RPM:            APM 平均回転数 [rpm]
-        Dmob:           電気移動度径 [m]
-        I:              有効電圧ビン数
+        V_array:        Representative voltage of each bin [V],          shape (I,)
+        n_meas:         Measured particle concentration [cm⁻³],          shape (I,)
+        V_sample_array: Integrated CPC sampling volume [cm³],            shape (I,)
+        t_meas_array:   Integrated measurement time per bin [s],         shape (I,)
+        RPM:            Mean APM rotation speed [rpm]
+        Dmob:           Electrical mobility diameter [m]
+        I:              Number of valid voltage bins
     """
     V_array:        np.ndarray
     n_meas:         np.ndarray
@@ -34,30 +34,33 @@ class MeasurementData:
 
 
 def load_and_bin(params) -> MeasurementData:
-    """APM 制御ソフト出力 CSV を読み込み、電圧スキャンをビニングする。
+    """Load an APM control software CSV file and bin the voltage scan.
 
-    CSV フォーマット:
-        1〜8行目: ヘッダー情報 ('Electrical Mobility Diameter' を含む行から Dmob を取得)
-        9行目:    列名 (Time, Rotation Speed, Applied Voltage, Outlet Particle Concentration)
-        10行目〜: 時系列測定データ
+    CSV format:
+        Lines 1-8:  Header information (Dmob is extracted from the line
+                    containing 'Electrical Mobility Diameter')
+        Line 9:     Column names (Time, Rotation Speed, Applied Voltage,
+                    Outlet Particle Concentration)
+        Line 10+:   Time-series measurement data
 
-    ビニングの物理的根拠:
-        示強性変数 (電圧, 濃度): 平均値 mean() を採用
-        示量性変数 (時間):       合計値 sum()  を採用
-        → 積算吸引体積 V_sample = Q_cpc × t_meas を正確に評価するため
+    Physical rationale for binning:
+        Intensive variables (voltage, concentration): averaged with mean()
+        Extensive variables (time):                  summed with sum()
+        -> Ensures accurate evaluation of V_sample = Q_cpc x t_meas
+           for Poisson variance weighting.
 
     Args:
-        params: params.py で定義されたユーザー設定モジュール
+        params: User configuration module defined in params.py
 
     Returns:
-        MeasurementData: ビニング済みの測定データ
+        MeasurementData: Binned measurement data
     """
     file_path = params.FILE_PATH
 
     # ----------------------------------------------------------------
-    # 1. ヘッダーから Dmob 抽出
+    # 1. Extract Dmob from header
     # ----------------------------------------------------------------
-    Dmob = 450.0e-9  # デフォルト [m]
+    Dmob = 450.0e-9  # default [m]
     try:
         with open(file_path, "r", encoding="utf-8", errors="replace") as f:
             for _ in range(8):
@@ -65,23 +68,23 @@ def load_and_bin(params) -> MeasurementData:
                 if "Electrical Mobility Diameter" in line:
                     parts = line.split(",")
                     if len(parts) > 1:
-                        Dmob = float(parts[1]) * 1e-9  # [nm] → [m]
+                        Dmob = float(parts[1]) * 1e-9  # [nm] -> [m]
     except Exception as exc:
-        print(f"[警告] ヘッダー読み込み失敗: {exc}  →  デフォルト Dmob={Dmob*1e9:.0f} nm を使用")
+        print(f"[Warning] Failed to read header: {exc}  ->  Using default Dmob={Dmob*1e9:.0f} nm")
 
     # ----------------------------------------------------------------
-    # 2. 時系列データ読み込みと Δt 計算
+    # 2. Load time-series data and compute Δt
     # ----------------------------------------------------------------
     df = pd.read_csv(file_path, skiprows=8)
     df["Time"] = pd.to_datetime(df["Time"])
 
-    # 各行が代表する測定時間 Δt [s]: 後方補間で最初の NaN を埋める
+    # Measurement time interval Δt [s] per row: fill first NaN by back-fill
     df["delta_t"] = df["Time"].diff().dt.total_seconds().bfill()
 
     RPM = float(df["Rotation Speed"].mean())
 
     # ----------------------------------------------------------------
-    # 3. 電圧スキャンのビニング (上昇・下降を統合)
+    # 3. Voltage binning (merging upward and downward scans)
     # ----------------------------------------------------------------
     min_v = df["Applied Voltage"].min()
     max_v = df["Applied Voltage"].max()
@@ -101,15 +104,15 @@ def load_and_bin(params) -> MeasurementData:
     I       = len(V_array)
 
     # ----------------------------------------------------------------
-    # 4. CPC 積算吸引体積の計算
+    # 4. Compute integrated CPC sampling volume
     # ----------------------------------------------------------------
-    Q_cpc_ccps     = params.Q_cpc_lpm * 1000.0 / 60.0   # [L/min] → [cm³/s]
+    Q_cpc_ccps     = params.Q_cpc_lpm * 1000.0 / 60.0   # [L/min] -> [cm³/s]
     V_sample_array = Q_cpc_ccps * t_meas_array
 
-    print("=== データ読み込み完了 ===")
-    print(f"  有効電圧ビン数 I = {I}")
-    print(f"  APM 回転数 (平均): {RPM:.1f} rpm")
-    print(f"  移動度粒径 Dmob  = {Dmob * 1e9:.1f} nm")
+    print("=== Data loading complete ===")
+    print(f"  Number of valid voltage bins I = {I}")
+    print(f"  APM rotation speed (mean): {RPM:.1f} rpm")
+    print(f"  Mobility diameter Dmob = {Dmob * 1e9:.1f} nm")
 
     return MeasurementData(
         V_array=V_array,

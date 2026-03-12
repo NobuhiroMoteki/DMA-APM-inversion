@@ -1,41 +1,41 @@
 # ==============================================================================
-# params.py  ―  ユーザー設定ファイル
-# このファイルだけを編集して解析条件を変更してください。
+# params.py  ---  User configuration file
+# Edit only this file to change the analysis settings.
 # ==============================================================================
 
-# --- 入力ファイル ---
+# --- Input file ---
 FILE_PATH  = "./APM-CPC_data/DMA-APMscan-CPC_20260303BC/FS_Dmob450nm_try2__20050101014000.csv"
-OUTPUT_DIR = "./results"        # JPEG 出力先ディレクトリ
+OUTPUT_DIR = "./results"        # Output directory for JPEG figures
 
-# --- APM 幾何寸法 [m]  (Kanomax APM Model-3601 の設計値) ---
-# L=100 mm, r1=24 mm, r2=25 mm は Kanomax APM Model-3601 の公称寸法です。
-# 他機種を使用する場合はこれらの値を変更してください。
-L   = 100.0e-3    # 電極長
-r1  = 24.0e-3     # 内筒半径
-r2  = 25.0e-3     # 外筒半径
+# --- APM geometry [m]  (nominal dimensions of Kanomax APM Model-3601) ---
+# L=100 mm, r1=24 mm, r2=25 mm are the nominal dimensions of the Kanomax APM Model-3601.
+# Change these values if you use a different instrument model.
+L   = 100.0e-3    # Electrode length
+r1  = 24.0e-3     # Inner cylinder radius
+r2  = 25.0e-3     # Outer cylinder radius
 
-# --- APM 運転条件 ---
-Q_a_lpm = 0.3     # エアロゾル流量 [L/min]
+# --- APM operating conditions ---
+Q_a_lpm = 0.3     # Aerosol flow rate [L/min]
 
-# --- CPC 条件 ---
-Q_cpc_lpm = 0.3   # CPC 流量 [L/min]
+# --- CPC conditions ---
+Q_cpc_lpm = 0.3   # CPC flow rate [L/min]
 
-# --- データ前処理 ---
-num_bins = 30     # 電圧ビン数
+# --- Data preprocessing ---
+num_bins = 30     # Number of voltage bins
 
-# --- RK4 数値積分パラメータ ---
-dz  = 1.0e-4      # 積分ステップ幅 [m]
-nr0 = 1000        # 初期粒子位置数
+# --- RK4 numerical integration parameters ---
+dz  = 1.0e-4      # Integration step size [m]
+nr0 = 1000        # Number of initial particle positions
 
-# --- 逆解析対象の質量範囲 ---
-m_min_fg = 5.0    # 下限 [fg]
-m_max_fg = 80.0   # 上限 [fg]
-J        = 40     # 質量ビン数
+# --- Mass range for inversion ---
+m_min_fg = 5.0    # Lower bound [fg]
+m_max_fg = 80.0   # Upper bound [fg]
+J        = 40     # Number of mass bins
 
-# --- 収束条件 ---
+# --- Convergence criteria ---
 max_iter      = 2000
 chi_threshold = 1.0
 
-# --- 2D モデル専用 ---
-beta        = 0.1   # DMA 分解能 β = q_sample / q_sheath
-num_Zp_bins = 7     # Z_p 積分点数
+# --- 2D model only ---
+beta        = 0.1   # DMA resolution β = q_sample / q_sheath
+num_Zp_bins = 7     # Number of Z_p integration points
