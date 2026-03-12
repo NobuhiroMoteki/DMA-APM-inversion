@@ -1,14 +1,14 @@
 """
-test_consistency.py  ―  リファクタリング前後の数値一致検証
+test_consistency.py  ---  Numerical equivalence verification before and after refactoring
 
-ノートブックから直接抜粋した旧コードと新モジュールを同一条件で実行し、
-カーネル行列 K および推定質量分布 f_estimated が
-浮動小数点精度の範囲で一致することを確認する。
+Runs both the original notebook code (extracted verbatim) and the new modular
+code under identical conditions, and confirms that the kernel matrix K and the
+estimated mass distribution f_estimated agree to within floating-point precision.
 
-合成データ (対数正規分布 + ポアソンノイズ) を使用するため
-実測 CSV ファイルは不要。
+Synthetic data (log-normal distribution + Poisson noise) are used as input,
+so no real measurement CSV file is required.
 
-実行方法:
+Usage:
     python test_consistency.py
 """
 import sys
@@ -17,7 +17,7 @@ import numpy as np
 from scipy.stats import lognorm
 
 # ==============================================================================
-# 共通パラメータ  (旧コード・新コード双方で同一の値を使用)
+# Shared parameters  (identical values used by both old and new code)
 # ==============================================================================
 E   = 1.60219e-19
 VIS = 1.83e-5
@@ -48,17 +48,17 @@ DZ    = 1.0e-4
 MAX_ITER      = 2000
 CHI_THRESHOLD = 1.0
 
-# 合成測定グリッド (電圧 20 点)
+# Synthetic measurement grid (20 voltage points)
 V_ARRAY = np.linspace(200, 1200, 20)
 I       = len(V_ARRAY)
 
-Q_CPC_CCPS     = 0.3 * 1000.0 / 60.0   # [cm³/s]
-T_MEAS         = 10.0                   # [s] / ビン
+Q_CPC_CCPS     = 0.3 * 1000.0 / 60.0   # [cm^3/s]
+T_MEAS         = 10.0                   # [s] per bin
 V_SAMPLE_ARRAY = np.full(I, Q_CPC_CCPS * T_MEAS)
 
 
 # ==============================================================================
-# 旧コード (ノートブックから完全抜粋)
+# Original code (extracted verbatim from the notebook)
 # ==============================================================================
 
 def _calc_transfer_efficiency_old(m, V):
@@ -121,10 +121,10 @@ def _solve_old(K_matrix, n_meas, vol_array):
 
 
 # ==============================================================================
-# 合成測定データの生成  (旧コードのカーネルを使用)
+# Generate synthetic measurement data  (using the original kernel)
 # ==============================================================================
 print("=" * 60)
-print("Step 1: 旧コードでカーネル行列を構築中 (I=20, J=40)...")
+print("Step 1: Building kernel matrix with original code (I=20, J=40)...")
 K_old, m_array_old = _build_K_old()
 
 f_true = lognorm.pdf(m_array_old, s=np.log(1.25), scale=2.5e-17)
@@ -135,20 +135,20 @@ n_ideal  = K_old @ f_true
 n_counts = np.random.poisson(np.maximum(n_ideal, 0) * V_SAMPLE_ARRAY)
 n_meas   = n_counts / V_SAMPLE_ARRAY
 
-print("Step 2: 旧コードで逆解析中...")
+print("Step 2: Running inversion with original code...")
 f_old = _solve_old(K_old, n_meas, V_SAMPLE_ARRAY)
 
 
 # ==============================================================================
-# 新コード (モジュール使用)
+# New code (using modules)
 # ==============================================================================
-print("Step 3: 新コードでカーネル行列を構築中...")
+print("Step 3: Building kernel matrix with new code...")
 
 from data_parser      import MeasurementData
 from kernel_simulator import build_kernel_1d
 from inversion_solver import solve_chahine_twomey
 
-# params.py の代わりに SimpleNamespace で同一パラメータを供給
+# Supply identical parameters via SimpleNamespace instead of params.py
 p = types.SimpleNamespace(
     r1=R1, r2=R2, L=L, Q_a_lpm=Q_LPM, Q_cpc_lpm=0.3,
     dz=DZ, nr0=NR0,
@@ -169,49 +169,49 @@ data_new = MeasurementData(
 
 K_new, m_array_new = build_kernel_1d(data_new, p)
 
-print("Step 4: 新コードで逆解析中...")
+print("Step 4: Running inversion with new code...")
 f_new = solve_chahine_twomey(K_new, m_array_new, data_new, p)
 
 
 # ==============================================================================
-# 数値比較
+# Numerical comparison
 # ==============================================================================
 print("\n" + "=" * 60)
-print("数値一致検証結果")
+print("Numerical equivalence verification results")
 print("=" * 60)
 
-RTOL = 1e-12   # 相対許容誤差
-ATOL = 0.0     # 絶対許容誤差 (0 = 厳密な相対比較)
+RTOL = 1e-12   # relative tolerance
+ATOL = 0.0     # absolute tolerance (0 = strict relative comparison)
 
 results = {}
 
 # m_array
 m_match = np.array_equal(m_array_old, m_array_new)
 results["m_array (exact)"] = m_match
-print(f"  m_array (exact):     {'✓ 一致' if m_match else '✗ 不一致'}")
+print(f"  m_array (exact):     {'PASS' if m_match else 'FAIL'}")
 
 # K matrix
 k_close   = np.allclose(K_old, K_new, rtol=RTOL, atol=ATOL)
 k_max_err = float(np.max(np.abs(K_old - K_new)))
 k_rel_err = float(np.max(np.abs((K_old - K_new) / np.maximum(np.abs(K_old), 1e-300))))
 results["K matrix"] = k_close
-print(f"  K matrix:            {'✓ 一致' if k_close else '✗ 不一致'}"
-      f"  (最大絶対誤差 = {k_max_err:.2e},  最大相対誤差 = {k_rel_err:.2e})")
+print(f"  K matrix:            {'PASS' if k_close else 'FAIL'}"
+      f"  (max abs error = {k_max_err:.2e},  max rel error = {k_rel_err:.2e})")
 
 # f_estimated
 f_close   = np.allclose(f_old, f_new, rtol=RTOL, atol=ATOL)
 f_max_err = float(np.max(np.abs(f_old - f_new)))
 f_rel_err = float(np.max(np.abs((f_old - f_new) / np.maximum(np.abs(f_old), 1e-300))))
 results["f_estimated"] = f_close
-print(f"  f_estimated:         {'✓ 一致' if f_close else '✗ 不一致'}"
-      f"  (最大絶対誤差 = {f_max_err:.2e},  最大相対誤差 = {f_rel_err:.2e})")
+print(f"  f_estimated:         {'PASS' if f_close else 'FAIL'}"
+      f"  (max abs error = {f_max_err:.2e},  max rel error = {f_rel_err:.2e})")
 
 print("=" * 60)
 all_pass = all(results.values())
 if all_pass:
-    print("✓ 全項目一致: リファクタリング前後の数値同一性を確認しました。")
+    print("All items match: numerical equivalence before and after refactoring confirmed.")
     sys.exit(0)
 else:
     failed = [k for k, v in results.items() if not v]
-    print(f"✗ 不一致あり: {failed}")
+    print(f"Mismatch detected: {failed}")
     sys.exit(1)

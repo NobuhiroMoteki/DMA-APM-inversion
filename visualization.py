@@ -1,9 +1,9 @@
 """
-visualization.py  ―  質量分布の Gaussian フィッティングと結果の JPEG 出力
+visualization.py  ---  Gaussian fitting of the mass distribution and JPEG output
 
-支配的モードを Gauss + 線形背景モデルでフィットし、
-中心位置 μ と標準偏差 σ をコンソールに出力する。
-出力図は dpi=600 の JPEG ファイルとして保存する。
+Fits the dominant mode with a Gaussian + linear background model and prints
+the peak centre mu and standard deviation sigma to the console.
+Output figures are saved as JPEG files at dpi=600.
 """
 from __future__ import annotations
 
@@ -21,21 +21,21 @@ matplotlib.rcParams["font.family"] = "sans-serif"
 
 
 # ------------------------------------------------------------------------------
-# Gaussian フィッティング
+# Gaussian fitting
 # ------------------------------------------------------------------------------
 
 @dataclass
 class GaussianFitResult:
-    """支配的モードの Gaussian フィット結果。
+    """Result of a Gaussian fit to the dominant mode.
 
     Attributes:
-        mu_fg:     ピーク中心位置 [fg]
-        sigma_fg:  標準偏差 [fg]
-        amplitude: ピーク高さ A [cm⁻³ fg⁻¹]
-        offset:    定数オフセット B [cm⁻³ fg⁻¹]
-        slope:     線形スロープ C [cm⁻³ fg⁻²]
-        r_squared: 決定係数 R²
-        success:   フィット成功フラグ
+        mu_fg:     Peak centre position [fg]
+        sigma_fg:  Standard deviation [fg]
+        amplitude: Peak amplitude A [cm^-3 fg^-1]
+        offset:    Constant offset B [cm^-3 fg^-1]
+        slope:     Linear slope C [cm^-3 fg^-2]
+        r_squared: Coefficient of determination R^2
+        success:   Flag indicating whether the fit succeeded
     """
     mu_fg:     float
     sigma_fg:  float
@@ -48,9 +48,9 @@ class GaussianFitResult:
 
 def _gauss_linear(m: np.ndarray, A: float, mu: float, sigma: float,
                   B: float, C: float) -> np.ndarray:
-    """Gauss + 線形背景モデル。
+    """Gaussian + linear background model.
 
-    f(m) = A · exp(−(m − μ)² / (2σ²)) + B + C·m
+    f(m) = A * exp(-(m - mu)^2 / (2*sigma^2)) + B + C*m
     """
     return A * np.exp(-0.5 * ((m - mu) / sigma) ** 2) + B + C * m
 
@@ -59,24 +59,25 @@ def fit_gaussian_mode(
     m_array:     np.ndarray,
     f_estimated: np.ndarray,
 ) -> GaussianFitResult:
-    """質量分布の支配的モードを Gaussian + 線形背景でフィットする。
+    """Fit the dominant mode of the mass distribution with a Gaussian + linear background.
 
-    フィットモデル:
-        f(m) = A · exp(−(m − μ)² / (2σ²)) + B + C·m
+    Fit model:
+        f(m) = A * exp(-(m - mu)^2 / (2*sigma^2)) + B + C*m
 
-    初期値: A = max(f),  μ = m[argmax(f)],  σ = (m_max − m_min)/6,  B = C = 0
+    Initial values: A = max(f),  mu = m[argmax(f)],  sigma = (m_max - m_min)/6,
+                    B = C = 0
 
-    フィット失敗時は警告を表示し success=False の結果を返す。
+    If fitting fails, a warning is printed and a result with success=False is returned.
 
     Args:
-        m_array:     質量グリッド [kg], shape (J,)
-        f_estimated: 推定質量分布 [cm⁻³ kg⁻¹], shape (J,)
+        m_array:     Mass grid [kg], shape (J,)
+        f_estimated: Estimated mass distribution [cm^-3 kg^-1], shape (J,)
 
     Returns:
         GaussianFitResult
     """
-    m_fg = m_array * 1e18       # [kg] → [fg]
-    f_fg = f_estimated * 1e-18  # [cm⁻³ kg⁻¹] → [cm⁻³ fg⁻¹]
+    m_fg = m_array * 1e18       # [kg] -> [fg]
+    f_fg = f_estimated * 1e-18  # [cm^-3 kg^-1] -> [cm^-3 fg^-1]
 
     peak_idx = int(np.argmax(f_fg))
     A0     = float(f_fg[peak_idx])
@@ -96,7 +97,7 @@ def fit_gaussian_mode(
             maxfev=10000,
         )
         A, mu, sigma, B, C = popt
-        sigma = abs(sigma)   # σ は正値
+        sigma = abs(sigma)   # sigma must be positive
 
         f_fit  = _gauss_linear(m_fg, *popt)
         ss_res = float(np.sum((f_fg - f_fit) ** 2))
@@ -113,16 +114,16 @@ def fit_gaussian_mode(
             success=True,
         )
         print("\n=== Gaussian Fit Result ===")
-        print(f"  Peak center  μ  = {mu:.2f} fg")
-        print(f"  Std. dev.    σ  = {sigma:.2f} fg")
-        print(f"  Amplitude    A  = {A:.4f} cm⁻³ fg⁻¹")
-        print(f"  Offset       B  = {B:.4f} cm⁻³ fg⁻¹")
-        print(f"  Slope        C  = {C:.6f} cm⁻³ fg⁻²")
-        print(f"  R²               = {r2:.4f}")
+        print(f"  Peak centre  mu    = {mu:.2f} fg")
+        print(f"  Std. dev.    sigma = {sigma:.2f} fg")
+        print(f"  Amplitude    A     = {A:.4f} cm^-3 fg^-1")
+        print(f"  Offset       B     = {B:.4f} cm^-3 fg^-1")
+        print(f"  Slope        C     = {C:.6f} cm^-3 fg^-2")
+        print(f"  R^2                = {r2:.4f}")
         return result
 
     except RuntimeError as exc:
-        print(f"[警告] Gaussian フィット失敗: {exc}")
+        print(f"[Warning] Gaussian fit failed: {exc}")
         return GaussianFitResult(
             mu_fg=mu0, sigma_fg=sigma0, amplitude=A0,
             offset=0.0, slope=0.0, r_squared=0.0, success=False,
@@ -130,7 +131,7 @@ def fit_gaussian_mode(
 
 
 # ------------------------------------------------------------------------------
-# 描画・保存
+# Plotting and saving
 # ------------------------------------------------------------------------------
 
 def plot_and_save(
@@ -142,29 +143,30 @@ def plot_and_save(
     params,
     output_path: str,
 ) -> None:
-    """結果を 2 パネル図として描画し JPEG (dpi=600) で保存する。
+    """Plot the results as a two-panel figure and save as JPEG (dpi=600).
 
-    左図: 実測 APM スペクトル (赤丸) vs 再構成シグナル (青実線)
-    右図: 推定質量分布 dN/dm (青実線) + Gaussian フィット曲線 (赤破線)
+    Left panel:  Measured APM spectrum (red dots) vs reconstructed signal (blue line)
+    Right panel: Estimated mass distribution dN/dm (blue line) + Gaussian fit (red dashed)
 
-    フィット成功時は右図凡例にフィット結果 (μ, σ, R²) を表示する。
+    When the fit succeeds, the legend of the right panel shows the fit parameters
+    (mu, sigma, R^2).
 
     Args:
-        data:        ビニング済み測定データ
-        K:           カーネル行列
-        m_array:     質量グリッド [kg]
-        f_estimated: 推定質量分布 [cm⁻³ kg⁻¹]
-        fit_result:  Gaussian フィット結果
-        params:      ユーザー設定
-        output_path: 出力ファイルパス (.jpg)
+        data:        Binned measurement data
+        K:           Kernel matrix
+        m_array:     Mass grid [kg]
+        f_estimated: Estimated mass distribution [cm^-3 kg^-1]
+        fit_result:  Gaussian fit result
+        params:      User configuration
+        output_path: Output file path (.jpg)
     """
     n_reconstructed = K @ f_estimated
-    m_fg = m_array * 1e18        # [kg] → [fg]
-    f_fg = f_estimated * 1e-18   # [cm⁻³ kg⁻¹] → [cm⁻³ fg⁻¹]
+    m_fg = m_array * 1e18        # [kg] -> [fg]
+    f_fg = f_estimated * 1e-18   # [cm^-3 kg^-1] -> [cm^-3 fg^-1]
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
-    # ---- 左図: APM スペクトル ----
+    # ---- Left panel: APM spectrum ----
     ax1.plot(data.V_array, data.n_meas, "ro", markersize=5,
              label="Measured (Binned Average)")
     ax1.plot(data.V_array, n_reconstructed, "b-", linewidth=2, alpha=0.8,
@@ -178,7 +180,7 @@ def plot_and_save(
     ax1.legend(fontsize=9)
     ax1.grid(True, linestyle="--", alpha=0.5)
 
-    # ---- 右図: 質量分布 ----
+    # ---- Right panel: mass distribution ----
     ax2.plot(m_fg, f_fg, "b-", linewidth=2, label="Estimated Distribution")
 
     if fit_result.success:
@@ -211,4 +213,4 @@ def plot_and_save(
     os.makedirs(out_dir, exist_ok=True)
     plt.savefig(output_path, dpi=600, format="jpeg", bbox_inches="tight")
     plt.close()
-    print(f"\n図を保存しました: {output_path}")
+    print(f"\nFigure saved: {output_path}")
