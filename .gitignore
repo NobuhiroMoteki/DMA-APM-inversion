@@ -1,0 +1,21 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Output results
+results/
+
+# Claude Code settings
+.claude/
+
+# Data files: ignore CaCO3 folder entirely and most BC files
+APM-CPC_data/DMA-APMscan-CPC_20250120CaCO3/
+APM-CPC_data/DMA-APMscan-CPC_20260303BC/FS_Dmob500nm_try1__20050101024557.csv
+APM-CPC_data/DMA-APMscan-CPC_20260303BC/FS_Dmob550nm_try1__20050101015918.csv
+APM-CPC_data/DMA-APMscan-CPC_20260303BC/JetA1_Dmob450nm_try1__20050101030343.csv
+APM-CPC_data/DMA-APMscan-CPC_20260303BC/JetA1_Dmob500nm_try1__20050101032008.csv
+APM-CPC_data/DMA-APMscan-CPC_20260303BC/JetA1_Dmob550nm_try1__20050101033753.csv
+
+# Windows Zone.Identifier alternate data streams
+*:Zone.Identifier
