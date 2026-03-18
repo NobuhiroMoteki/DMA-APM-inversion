@@ -1,6 +1,7 @@
 # Technical Note: Data Inversion Theory for the DMA-APM-CPC Tandem Aerosol Measurement System
 
 **Author:** N. Moteki
+
 **Last updated:** 2026-03-18 (corresponds to DMA-APM-inversion v0.1.2)
 
 This document provides a self-contained description of the mathematical theory and numerical algorithms implemented in the DMA-APM mass distribution inversion tool. It covers the formulation of the forward problem (1D and 2D integral models), the physical justification for the 1D approximation, the original RK4-based APM transfer function simulation, the Chahine-Twomey inversion algorithm with Markowski smoothing, and the Poisson-statistics-based convergence criterion.
