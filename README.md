@@ -7,7 +7,7 @@ This Python-based data inversion tool evaluates the mass distribution of aerosol
 This tool features a proprietary numerical simulation approach for calculating the APM transfer function by tracing particle trajectories under a parabolic flow profile. It solves the inverse problem using a robust Chahine-Twomey iterative algorithm constrained by Poisson statistics. Both a rapid 1D approximation model and a rigorous 2D convolution model are documented and supported. For theoretical details, see the [Technical Note](docs/theory_note.pdf).
 
 <p align="center">
-<img src="system_schematic.svg" alt="DMA–APM–CPC system schematic"/>
+<img src="system_schematic.png" alt="DMA–APM–CPC system schematic"/>
 </p>
 <p align="center"><em>Schematic diagram of the aerosol measurement system and data inversion procedure</em></p>
 
