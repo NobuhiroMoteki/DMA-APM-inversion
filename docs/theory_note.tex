@@ -1,0 +1,527 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{physics}
+\usepackage{bm}
+\usepackage{siunitx}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+
+\title{Technical Note: Data Inversion Theory for the DMA-APM-CPC\\
+Tandem Aerosol Measurement System}
+\author{N.~Moteki}
+\date{Last updated: 2026-03-19 (corresponds to DMA-APM-inversion v0.1.2)}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This document provides a self-contained description of the mathematical
+theory and numerical algorithms implemented in the DMA-APM mass distribution
+inversion tool.  It covers the formulation of the forward problem (1D and 2D
+integral models), the physical justification for the 1D approximation, the
+original RK4-based APM transfer function simulation, the Chahine--Twomey
+inversion algorithm with Markowski smoothing, and the Poisson-statistics-based
+convergence criterion.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%% ====================================================================
+\section{Objective and problem statement}
+\label{sec:objective}
+%% ====================================================================
+
+The objective of this analysis is to estimate the highly resolved mass
+distribution of aerosol particles that have been pre-classified by a specific
+electrical mobility diameter using a DMA-APM-CPC tandem measurement system.
+Specifically, we seek the mass distribution function at the DMA outlet:
+\begin{equation}
+  f(m) = \frac{\dd N}{\dd m},
+  \label{eq:mass-distribution}
+\end{equation}
+where $N$ is the particle number concentration and $m$ is the particle mass.
+The observed CPC concentration $n(V)$ at each APM applied voltage $V$ is
+related to $f(m)$ through a Fredholm integral equation of the first kind, and
+recovering $f(m)$ from $n(V)$ constitutes an ill-posed inverse problem.
+
+%% ====================================================================
+\section{Formulation of the forward problem}
+\label{sec:forward-problem}
+%% ====================================================================
+
+%% --------------------------------------------------------------------
+\subsection{The rigorous 2D-integral model}
+\label{sec:2d-model}
+%% --------------------------------------------------------------------
+
+The expected particle number concentration $n(V)$ observed downstream of the
+APM is governed by a double integral over both mass $m$ and electrical
+mobility $Z_{\mathrm{p}}$:
+\begin{equation}
+  n(V) = \int_{0}^{\infty}\!\int_{0}^{\infty}
+    \Omega_{\mathrm{APM}}(m, V, Z_{\mathrm{p}}) \,
+    f_{\mathrm{in}}(m, Z_{\mathrm{p}}) \,
+    \Omega_{\mathrm{DMA}}(Z_{\mathrm{p}}) \,
+    \dd Z_{\mathrm{p}} \, \dd m,
+  \label{eq:2d-forward}
+\end{equation}
+where $f_{\mathrm{in}}(m, Z_{\mathrm{p}})$ is the intrinsic 2D
+mass-mobility distribution of the raw aerosol entering the DMA,
+$\Omega_{\mathrm{DMA}}(Z_{\mathrm{p}})$ is the DMA transfer function, and
+$\Omega_{\mathrm{APM}}(m, V, Z_{\mathrm{p}})$ is the APM transfer function.
+
+Assuming that $f_{\mathrm{in}}$ is approximately constant with respect to
+$Z_{\mathrm{p}}$ over the narrow DMA transmission window, we define the
+target distribution $f(m)$ as the mass distribution of the aerosol exiting
+the DMA:
+\begin{equation}
+  f(m) = f_{\mathrm{in}}(m, Z_{\mathrm{p}}^{*})
+    \int_{0}^{\infty} \Omega_{\mathrm{DMA}}(Z_{\mathrm{p}}) \,
+    \dd Z_{\mathrm{p}}.
+  \label{eq:target-distribution}
+\end{equation}
+
+Using this definition, the forward problem reduces to:
+\begin{equation}
+  n(V) = \int_{0}^{\infty}
+    K_{\mathrm{eff}}^{\mathrm{2D}}(V, m) \, f(m) \, \dd m,
+  \label{eq:2d-reduced}
+\end{equation}
+where the effective 2D kernel is:
+\begin{equation}
+  K_{\mathrm{eff}}^{\mathrm{2D}}(V, m) =
+    \frac{\displaystyle\int_{0}^{\infty}
+      \Omega_{\mathrm{APM}}(m, V, Z_{\mathrm{p}}) \,
+      \Omega_{\mathrm{DMA}}(Z_{\mathrm{p}}) \,
+      \dd Z_{\mathrm{p}}}
+    {\displaystyle\int_{0}^{\infty}
+      \Omega_{\mathrm{DMA}}(Z_{\mathrm{p}}) \,
+      \dd Z_{\mathrm{p}}}.
+  \label{eq:2d-kernel}
+\end{equation}
+
+In the implementation, the DMA transfer function is modelled as a triangular
+function centred at the target mobility $Z_{\mathrm{p}}^{*}$ with half-width
+$\beta Z_{\mathrm{p}}^{*}$, where
+$\beta = Q_{\mathrm{sample}}/Q_{\mathrm{sheath}}$ is the DMA flow ratio.
+The integral in \eqref{eq:2d-kernel} is evaluated numerically using the
+rectangle rule with a configurable number of quadrature points.
+
+%% --------------------------------------------------------------------
+\subsection{The 1D-integral approximation}
+\label{sec:1d-model}
+%% --------------------------------------------------------------------
+
+By approximating the DMA output as a Dirac delta function centred at the
+target mobility $Z_{\mathrm{p}}^{*}$, the effective kernel simplifies to:
+\begin{equation}
+  K^{\mathrm{1D}}(V, m) =
+    \Omega_{\mathrm{APM}}(m, V, Z_{\mathrm{p}}^{*}),
+  \label{eq:1d-kernel}
+\end{equation}
+and the forward problem becomes:
+\begin{equation}
+  n(V) \approx \int_{0}^{\infty}
+    K^{\mathrm{1D}}(V, m) \, f(m) \, \dd m.
+  \label{eq:1d-forward}
+\end{equation}
+
+In both the 1D and 2D models, the inversion algorithm solves for the same
+target: $f(m)$, the mass distribution of the particles at the DMA outlet.
+
+%% ====================================================================
+\section{Physical justification: why the 1D model is practically sufficient}
+\label{sec:1d-justification}
+%% ====================================================================
+
+In practice, the mass distributions obtained from the 1D and 2D models are
+virtually identical, even when the DMA resolution is relatively broad
+(e.g., $\beta = 0.2$).  This equivalence arises from the fundamental
+classification principle of the APM.  The central classified mass is:
+\begin{equation}
+  m_{\mathrm{c}} =
+    \frac{e V}
+         {r_{\mathrm{c}}^{2} \, \omega^{2} \, \ln(r_{2}/r_{1})},
+  \label{eq:central-mass}
+\end{equation}
+where $e$ is the elementary charge,
+$r_{\mathrm{c}} = (r_{1} + r_{2})/2$ is the gap centre radius,
+$\omega$ is the angular velocity, and $r_{1}$, $r_{2}$ are the inner and
+outer cylinder radii.  This expression is completely independent of the
+particle's electrical mobility $Z_{\mathrm{p}}$.  A variation in
+$Z_{\mathrm{p}}$ (due to the DMA's finite transmission width) only alters the
+particle's radial drift velocity inside the APM, slightly affecting its
+transit time.  Consequently, $Z_{\mathrm{p}}$ variations marginally broaden
+the width of $\Omega_{\mathrm{APM}}$ but do not shift its central peak.
+Because the 2D convolution averages these minor, symmetric width changes, the
+resulting $K_{\mathrm{eff}}^{\mathrm{2D}}$ is nearly indistinguishable from
+$K^{\mathrm{1D}}$.
+
+The 1D approximation therefore provides mathematically and physically robust
+results at approximately $1/N_{Z_{\mathrm{p}}}$ of the computational cost of
+the 2D model, where $N_{Z_{\mathrm{p}}}$ is the number of $Z_{\mathrm{p}}$
+quadrature points.
+
+%% ====================================================================
+\section{APM transfer function: particle trajectory simulation}
+\label{sec:apm-transfer}
+%% ====================================================================
+
+%% --------------------------------------------------------------------
+\subsection{Equation of motion}
+\label{sec:equation-of-motion}
+%% --------------------------------------------------------------------
+
+To compute $\Omega_{\mathrm{APM}}(m, V, Z_{\mathrm{p}})$, this tool employs
+an original numerical simulation method that directly tracks particle
+trajectories within the APM gap using the 4th-order Runge--Kutta (RK4) method.
+
+Inside the APM annular gap (inner radius $r_{1}$, outer radius $r_{2}$,
+centre radius $r_{\mathrm{c}} = (r_{1} + r_{2})/2$, half-width
+$\delta = (r_{2} - r_{1})/2$), a particle of mass $m$ and electrical
+mobility $Z_{\mathrm{p}}$ experiences centrifugal and electrostatic forces.
+Under the assumption of a fully developed parabolic laminar flow profile, the
+ratio of the radial to axial velocity components is
+(Ehara et al., 1996):
+\begin{equation}
+  \frac{\dd r}{\dd z}
+  = \frac{v_{\mathrm{r}}(r)}{v_{\mathrm{z}}(r)}
+  = \frac{\dfrac{Z_{\mathrm{p}}}{e}
+      \left( m \omega^{2} r
+             - \dfrac{eV}{r \ln(r_{2}/r_{1})} \right)}
+    {\dfrac{3Q}{4\pi \delta r_{\mathrm{c}}}
+      \left[ 1 - \left(\dfrac{r - r_{\mathrm{c}}}{\delta}\right)^{2}
+      \right]},
+  \label{eq:motion-raw}
+\end{equation}
+where $Q$ is the volumetric aerosol flow rate.  This can be rearranged to:
+\begin{equation}
+  \frac{\dd r}{\dd z}
+  = \frac{8\pi \delta r_{\mathrm{c}}}{3Q}
+    \frac{Z_{\mathrm{p}}}{e} \cdot
+    \frac{m \omega^{2} r
+          - \dfrac{eV}{r \ln(r_{2}/r_{1})}}
+         {1 - \left(\dfrac{r - r_{\mathrm{c}}}{\delta}\right)^{2}}.
+  \label{eq:motion-rearranged}
+\end{equation}
+
+%% --------------------------------------------------------------------
+\subsection{RK4 integration and transmission efficiency}
+\label{sec:rk4}
+%% --------------------------------------------------------------------
+
+The trajectory equation~\eqref{eq:motion-rearranged} is integrated along the
+axial coordinate $z$ from $z = 0$ to $z = L$ (the electrode length) using
+the classical 4th-order Runge--Kutta method with a fixed step size $\Delta z$:
+\begin{align}
+  k_{1} &= \Delta z \cdot g(r_{n}),
+    \label{eq:rk4-k1} \\
+  k_{2} &= \Delta z \cdot g(r_{n} + k_{1}/2),
+    \label{eq:rk4-k2} \\
+  k_{3} &= \Delta z \cdot g(r_{n} + k_{2}/2),
+    \label{eq:rk4-k3} \\
+  k_{4} &= \Delta z \cdot g(r_{n} + k_{3}),
+    \label{eq:rk4-k4} \\
+  r_{n+1} &= r_{n} + \frac{1}{6}(k_{1} + 2k_{2} + 2k_{3} + k_{4}),
+    \label{eq:rk4-update}
+\end{align}
+where $g(r) \equiv \dd r / \dd z$ as defined in
+\eqref{eq:motion-rearranged}.
+
+A total of $N_{r_{0}}$ particles are launched from uniformly spaced initial
+radial positions $r_{0} \in [r_{1}, r_{2}]$.  A particle is considered lost
+if it hits the inner or outer electrode wall at any step.  The transmission
+efficiency is computed as the flux-weighted fraction of surviving particles:
+\begin{equation}
+  \Omega_{\mathrm{APM}}
+  = \frac{\displaystyle\sum_{r_{0} \in \text{survived}} w(r_{0})}
+         {\displaystyle\sum_{r_{0} \in \text{all}} w(r_{0})},
+  \label{eq:transmission}
+\end{equation}
+where the weight $w(r_{0})$ accounts for the parabolic flow profile:
+\begin{equation}
+  w(r_{0}) = \frac{3}{2}
+    \left[ 1 - \left(\frac{r_{0} - r_{\mathrm{c}}}{\delta}\right)^{2}
+    \right].
+  \label{eq:flux-weight}
+\end{equation}
+
+%% --------------------------------------------------------------------
+\subsection{Cunningham slip correction}
+\label{sec:cunningham}
+%% --------------------------------------------------------------------
+
+The electrical mobility $Z_{\mathrm{p}}$ is related to the mobility diameter
+$D_{\mathrm{mob}}$ via:
+\begin{equation}
+  Z_{\mathrm{p}} =
+    \frac{e \, C_{\mathrm{c}}(D_{\mathrm{mob}})}
+         {3 \pi \eta D_{\mathrm{mob}}},
+  \label{eq:mobility}
+\end{equation}
+where $\eta$ is the dynamic viscosity of air and $C_{\mathrm{c}}$ is the
+Cunningham slip correction factor (Hinds, 1999):
+\begin{equation}
+  C_{\mathrm{c}} = 1 + \frac{1}{Pd}
+    \left[ 15.60 + 7.00 \exp(-0.059 \, Pd) \right],
+  \label{eq:cunningham}
+\end{equation}
+with $P$ the atmospheric pressure in \si{\kilo\pascal} and $d$ the diameter
+in \si{\micro\metre}.
+
+%% --------------------------------------------------------------------
+\subsection{Kernel matrix discretisation}
+\label{sec:kernel-discretisation}
+%% --------------------------------------------------------------------
+
+For the discrete inversion, the integral in \eqref{eq:1d-forward} is
+approximated by the rectangle rule over $J$ mass bins:
+\begin{equation}
+  n(V_{i}) \approx \sum_{j=1}^{J} K_{i,j} \, f(m_{j}),
+  \label{eq:discrete-forward}
+\end{equation}
+where
+$K_{i,j} = \Omega_{\mathrm{APM}}(m_{j}, V_{i}, Z_{\mathrm{p}}^{*})
+\cdot \Delta m$
+for the 1D model, $m_{j}$ are uniformly spaced mass grid points, and
+$\Delta m = (m_{\mathrm{max}} - m_{\mathrm{min}})/(J - 1)$.
+The kernel matrix $\mathbf{K}$ has shape $I \times J$, where $I$ is the
+number of voltage bins.
+
+%% ====================================================================
+\section{Inversion algorithm: Chahine--Twomey method with internal smoothing}
+\label{sec:inversion}
+%% ====================================================================
+
+%% --------------------------------------------------------------------
+\subsection{Update equation}
+\label{sec:update-equation}
+%% --------------------------------------------------------------------
+
+To solve the discrete ill-posed problem
+$\mathbf{n} = \mathbf{K} \mathbf{f}$, we use the non-negative
+Chahine--Twomey iterative algorithm (Twomey, 1975).  The update rule at
+iteration $k$ is:
+\begin{equation}
+  f_{j}^{(k+1)} = f_{j}^{(k)} \cdot
+    \frac{\displaystyle\sum_{i=1}^{I}
+      \hat{K}_{i,j}
+      \left( n_{\mathrm{meas},i} \,/\, n_{\mathrm{calc},i}^{(k)} \right)}
+    {\displaystyle\sum_{i=1}^{I} \hat{K}_{i,j}},
+  \label{eq:chahine-update}
+\end{equation}
+where $\hat{K}_{i,j} = K_{i,j} / \max(\mathbf{K})$ is the normalised kernel,
+$n_{\mathrm{meas},i}$ is the measured concentration in the $i$-th voltage bin,
+and $n_{\mathrm{calc},i}^{(k)} = \sum_{j} K_{i,j} f_{j}^{(k)}$ is the
+forward-calculated concentration at iteration $k$.
+
+The initial guess is a uniform distribution:
+\begin{equation}
+  f_{j}^{(0)} =
+    \frac{\sum_{i=1}^{I} n_{\mathrm{meas},i}}
+         {m_{\mathrm{max}} - m_{\mathrm{min}}},
+  \quad j = 1, \ldots, J.
+  \label{eq:initial-guess}
+\end{equation}
+
+%% --------------------------------------------------------------------
+\subsection{Markowski 1-2-1 smoothing}
+\label{sec:smoothing}
+%% --------------------------------------------------------------------
+
+After each iteration, a three-point moving average filter (Markowski, 1987) is
+applied to suppress high-frequency oscillations caused by noise amplification:
+\begin{equation}
+  \tilde{f}_{j} =
+    \frac{1}{4} f_{j-1} + \frac{1}{2} f_{j} + \frac{1}{4} f_{j+1},
+  \quad j = 2, \ldots, J-1.
+  \label{eq:markowski-smoothing}
+\end{equation}
+The endpoints ($j = 1$ and $j = J$) are not smoothed.
+
+%% ====================================================================
+\section{Poisson variance and convergence criterion}
+\label{sec:convergence}
+%% ====================================================================
+
+%% --------------------------------------------------------------------
+\subsection{Poisson counting statistics}
+\label{sec:poisson}
+%% --------------------------------------------------------------------
+
+The CPC measures particle counts $N_{i}$ during the integration time
+$t_{\mathrm{meas},i}$ at each voltage bin.  The measured concentration is
+$n_{\mathrm{meas},i} = N_{i} / V_{\mathrm{sample},i}$, where
+$V_{\mathrm{sample},i} = Q_{\mathrm{CPC}} \cdot t_{\mathrm{meas},i}$ is the
+total sampled air volume.  Because particle counting follows Poisson
+statistics, the variance of the measured concentration is:
+\begin{equation}
+  \mathrm{Var}(n_{i}) =
+    \frac{n_{\mathrm{calc},i}}{V_{\mathrm{sample},i}}.
+  \label{eq:poisson-variance}
+\end{equation}
+
+In practice, a floor is applied to prevent division by zero:
+\begin{equation}
+  \mathrm{Var}(n_{i}) =
+    \max\!\left(
+      \frac{n_{\mathrm{calc},i}}{V_{\mathrm{sample},i}}, \;
+      \frac{1}{V_{\mathrm{sample},i}^{2}}
+    \right).
+  \label{eq:variance-floor}
+\end{equation}
+
+%% --------------------------------------------------------------------
+\subsection{Reduced chi-squared criterion}
+\label{sec:chi-squared}
+%% --------------------------------------------------------------------
+
+Convergence is determined by the reduced chi-squared statistic:
+\begin{equation}
+  \chi^{2} = \frac{1}{I} \sum_{i=1}^{I}
+    \frac{\left(n_{\mathrm{meas},i} - n_{\mathrm{calc},i}\right)^{2}}
+         {\mathrm{Var}(n_{i})}.
+  \label{eq:chi-squared}
+\end{equation}
+
+The iteration terminates when
+$\chi^{2} < \chi^{2}_{\mathrm{threshold}}$.  The default threshold is
+$\chi^{2}_{\mathrm{threshold}} = 1.0$, corresponding to the expectation that
+residuals should be comparable to the measurement noise.  This criterion
+prevents overfitting: stopping at $\chi^{2} \approx 1$ ensures that the
+solution explains the data to within the precision allowed by Poisson counting
+noise.
+
+%% ====================================================================
+\section{Data preprocessing: voltage binning}
+\label{sec:preprocessing}
+%% ====================================================================
+
+%% --------------------------------------------------------------------
+\subsection{Merging upward and downward scans}
+\label{sec:scan-merge}
+%% --------------------------------------------------------------------
+
+The raw APM data consists of time-series measurements during continuous
+voltage scanning (both upward and downward sweeps).  The data are binned into
+$I$ voltage bins by grouping measurements with similar applied voltages.
+
+%% --------------------------------------------------------------------
+\subsection{Binning rules for physical quantities}
+\label{sec:binning-rules}
+%% --------------------------------------------------------------------
+
+The binning procedure strictly distinguishes between intensive and extensive
+variables:
+\begin{itemize}
+  \item \textbf{Intensive variables} (state quantities): Applied voltage $V$
+    and particle concentration $n$ are averaged within each bin using the
+    arithmetic mean.
+  \item \textbf{Extensive variables} (amount quantities): The measurement time
+    $t_{\mathrm{meas}}$ for each bin is obtained by summing the individual
+    time intervals $\Delta t$ of each data row assigned to that bin.
+\end{itemize}
+
+This distinction is critical for the correct evaluation of
+$V_{\mathrm{sample},i} = Q_{\mathrm{CPC}} \cdot t_{\mathrm{meas},i}$, which
+directly enters the Poisson variance calculation~\eqref{eq:variance-floor}.
+
+%% ====================================================================
+\section{Implementation mapping}
+\label{sec:implementation}
+%% ====================================================================
+
+Table~\ref{tab:implementation} maps each theoretical element to the
+corresponding function and source file.
+
+\begin{table}[htbp]
+  \caption{Mapping from theory to implementation.}
+  \label{tab:implementation}
+  \centering
+  \begin{tabular}{lll}
+    \toprule
+    Theory & Implementation & File \\
+    \midrule
+    Cunningham correction, \eqref{eq:cunningham}
+      & \texttt{\_cunningham(Dmob)}
+      & \texttt{kernel\_simulator.py} \\
+    Trajectory equation, \eqref{eq:motion-rearranged}
+      & \texttt{dr\_dz(rad)} inside \texttt{\_rk4\_transmission}
+      & \texttt{kernel\_simulator.py} \\
+    RK4 integration, \eqref{eq:rk4-k1}--\eqref{eq:rk4-update}
+      & \texttt{\_rk4\_transmission(\ldots)}
+      & \texttt{kernel\_simulator.py} \\
+    Transmission efficiency, \eqref{eq:transmission}--\eqref{eq:flux-weight}
+      & \texttt{\_rk4\_transmission(\ldots)}
+      & \texttt{kernel\_simulator.py} \\
+    1D kernel matrix, \eqref{eq:discrete-forward}
+      & \texttt{build\_kernel\_1d(data, params)}
+      & \texttt{kernel\_simulator.py} \\
+    2D effective kernel, \eqref{eq:2d-kernel}
+      & \texttt{build\_kernel\_2d(data, params)}
+      & \texttt{kernel\_simulator.py} \\
+    Chahine--Twomey update, \eqref{eq:chahine-update}
+      & \texttt{solve\_chahine\_twomey(\ldots)}
+      & \texttt{inversion\_solver.py} \\
+    Markowski smoothing, \eqref{eq:markowski-smoothing}
+      & \texttt{solve\_chahine\_twomey(\ldots)}
+      & \texttt{inversion\_solver.py} \\
+    Poisson variance, \eqref{eq:variance-floor}
+      & \texttt{solve\_chahine\_twomey(\ldots)}
+      & \texttt{inversion\_solver.py} \\
+    Chi-squared criterion, \eqref{eq:chi-squared}
+      & \texttt{solve\_chahine\_twomey(\ldots)}
+      & \texttt{inversion\_solver.py} \\
+    Voltage binning, Sec.~\ref{sec:preprocessing}
+      & \texttt{load\_and\_bin(params)}
+      & \texttt{data\_parser.py} \\
+    Gaussian mode fitting
+      & \texttt{fit\_gaussian\_mode(m\_array, f)}
+      & \texttt{visualization.py} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+%% ====================================================================
+\section{References}
+\label{sec:references}
+%% ====================================================================
+
+\begin{enumerate}
+  \item K.~Ehara, C.~Hagwood, and K.~J.~Coakley,
+    ``Novel method to classify aerosol particles according to their
+    mass-to-charge ratio---Aerosol particle mass analyser,''
+    \textit{J.\ Aerosol Sci.}, vol.~27, no.~2, pp.~217--234, 1996.
+    DOI: \href{https://doi.org/10.1016/0021-8502(96)00014-4}%
+    {10.1016/0021-8502(96)00014-4}.
+
+  \item S.~Twomey,
+    ``Comparison of constrained linear inversion and an iterative nonlinear
+    algorithm applied to the indirect estimation of particle size
+    distributions,''
+    \textit{J.\ Comput.\ Phys.}, vol.~18, no.~2, pp.~188--200, 1975.
+    DOI: \href{https://doi.org/10.1016/0021-9991(75)90028-5}%
+    {10.1016/0021-9991(75)90028-5}.
+
+  \item G.~R.~Markowski,
+    ``Improving Twomey's algorithm for inversion of aerosol measurement
+    data,''
+    \textit{Aerosol Sci.\ Technol.}, vol.~7, no.~2, pp.~127--141, 1987.
+    DOI: \href{https://doi.org/10.1080/02786828708959153}%
+    {10.1080/02786828708959153}.
+
+  \item W.~C.~Hinds,
+    \textit{Aerosol Technology: Properties, Behavior, and Measurement of
+    Airborne Particles}, 2nd~ed.\ Wiley, 1999.  Eq.~(3.22).
+\end{enumerate}
+
+\bigskip
+\noindent\textbf{Acknowledgment.}\quad
+This document was prepared with the assistance of Claude (Anthropic).
+The author assumes full responsibility for the content.
+
+\end{document}

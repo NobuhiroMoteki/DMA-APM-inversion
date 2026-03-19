@@ -17,5 +17,14 @@ APM-CPC_data/DMA-APMscan-CPC_20260303BC/JetA1_Dmob450nm_try1__20050101030343.csv
 APM-CPC_data/DMA-APMscan-CPC_20260303BC/JetA1_Dmob500nm_try1__20050101032008.csv
 APM-CPC_data/DMA-APMscan-CPC_20260303BC/JetA1_Dmob550nm_try1__20050101033753.csv
 
+# LaTeX build artifacts
+docs/*.aux
+docs/*.fdb_latexmk
+docs/*.fls
+docs/*.log
+docs/*.out
+docs/*.toc
+docs/*.synctex.gz
+
 # Windows Zone.Identifier alternate data streams
 *:Zone.Identifier
