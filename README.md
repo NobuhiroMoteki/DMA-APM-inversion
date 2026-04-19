@@ -1,5 +1,7 @@
 # DMA-APM Data Inversion Tool
 
+[![Latest release](https://img.shields.io/github/v/release/NobuhiroMoteki/DMA-APM-inversion?label=latest%20release&sort=semver)](https://github.com/NobuhiroMoteki/DMA-APM-inversion/releases/latest)
+
 **The primary purpose of this tool is to determine the highly resolved mass distribution of aerosol particles that have been pre-classified by their electrical mobility.**
 
 This Python-based data inversion tool evaluates the mass distribution of aerosol particles pre-classified by the DMA from the raw data obtained by the tandem DMA-APM-CPC (Differential Mobility Analyzer - Aerosol Particle Mass Analyzer - Condensation Particle Counter) system.
