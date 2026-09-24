@@ -214,3 +214,188 @@ def plot_and_save(
     plt.savefig(output_path, dpi=600, format="jpeg", bbox_inches="tight")
     plt.close()
     print(f"\nFigure saved: {output_path}")
+
+
+def plot_transfer_function(
+    m_arrays:    list[np.ndarray],
+    Omegas:      list[np.ndarray],
+    V_list:      list[float],
+    m_c_list:    list[float],
+    RPM:         float,
+    Dmob:        float,
+    output_path: str,
+) -> None:
+    """Plot the standalone APM transfer function and save as JPEG (dpi=600).
+
+    Left panel:  Omega_APM versus particle mass [fg] for each voltage
+                 (dotted vertical line: classifying mass m_c)
+    Right panel: Omega_APM versus normalised mass m / m_c
+
+    Args:
+        m_arrays:    Mass grid for each voltage [kg], list of shape (J,)
+        Omegas:      Transmission efficiency for each voltage, list of shape (J,)
+        V_list:      Applied voltages [V]
+        m_c_list:    Classifying mass for each voltage [kg]
+        RPM:         APM rotation speed [rpm]
+        Dmob:        Electrical mobility diameter [m]
+        output_path: Output file path (.jpg)
+    """
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    colors = plt.cm.viridis(np.linspace(0.0, 0.85, len(V_list)))
+
+    for m_array, Omega, V, m_c, c in zip(m_arrays, Omegas, V_list, m_c_list, colors):
+        label = f"V = {V:.0f} V  ($m_c$ = {m_c * 1e18:.2f} fg)"
+        ax1.plot(m_array * 1e18, Omega, "-", color=c, linewidth=2, label=label)
+        ax1.axvline(m_c * 1e18, color=c, linestyle=":", linewidth=1)
+        ax2.plot(m_array / m_c, Omega, "-", color=c, linewidth=2, label=label)
+
+    title = f"APM Transfer Function  ($D_{{mob}}$ = {Dmob * 1e9:.0f} nm,  RPM = {RPM:.0f})"
+    ax1.set_xlabel("Particle Mass [fg]")
+    ax1.set_ylabel(r"Transmission Efficiency  $\Omega_{APM}$")
+    ax1.set_title(title)
+    ax2.set_xlabel(r"Normalised Mass  $m / m_c$")
+    ax2.set_ylabel(r"Transmission Efficiency  $\Omega_{APM}$")
+    ax2.set_title("Normalised by Classifying Mass")
+    for ax in (ax1, ax2):
+        ax.set_ylim(0.0, 1.05)
+        ax.legend(fontsize=9)
+        ax.grid(True, linestyle="--", alpha=0.5)
+
+    plt.tight_layout()
+
+    out_dir = os.path.dirname(os.path.abspath(output_path))
+    os.makedirs(out_dir, exist_ok=True)
+    plt.savefig(output_path, dpi=600, format="jpeg", bbox_inches="tight")
+    plt.close()
+    print(f"\nFigure saved: {output_path}")
+
+
+def plot_setpoint_transfer_functions(
+    setpoints:   list,
+    output_path: str,
+    overlay:     str = "particle",
+) -> None:
+    """Plot APM transfer functions simulated at the set-points (JPEG, dpi=600).
+
+    Left panel:  Omega_APM versus particle mass [fg]
+                 (dotted vertical line: target particle mass m_p)
+    Right panel: Omega_APM versus normalised mass m / m_p
+
+    Args:
+        setpoints:   List of apm_setpoint.APMSetpoint
+        output_path: Output file path (.jpg)
+        overlay:     "particle": curves are different particles at common
+                     (Q_a, lambda); "lambda": curves are different lambda for
+                     a common particle and Q_a
+    """
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    colors = plt.cm.viridis(np.linspace(0.0, 0.85, len(setpoints)))
+    sp0    = setpoints[0]
+
+    for sp, c in zip(setpoints, colors):
+        setting = (
+            f"RPM = {sp.RPM:.0f},  V = {sp.V:.1f} V,  "
+            f"$m$/FWHM = {sp.m_p / sp.fwhm:.2f}"
+        )
+        if overlay == "lambda":
+            label = f"$\\lambda$ = {sp.lam:.2f}:  {setting}"
+        else:
+            label = (
+                f"$d$ = {sp.d * 1e9:.0f} nm, $\\rho_{{eff}}$ = {sp.rho_eff:.0f} kg m$^{{-3}}$"
+                f"  ($m$ = {sp.m_p * 1e18:.2f} fg)\n{setting}"
+            )
+        ax1.plot(sp.m_array * 1e18, sp.Omega, "-", color=c, linewidth=2, label=label)
+        ax2.plot(sp.m_array / sp.m_p, sp.Omega, "-", color=c, linewidth=2, label=label)
+        if overlay != "lambda":
+            ax1.axvline(sp.m_p * 1e18, color=c, linestyle=":", linewidth=1)
+    if overlay == "lambda":
+        ax1.axvline(sp0.m_p * 1e18, color="gray", linestyle=":", linewidth=1)
+        title = (
+            f"APM Transfer Function at Set-point  ($d$ = {sp0.d * 1e9:.0f} nm, "
+            f"$\\rho_{{eff}}$ = {sp0.rho_eff:.0f} kg m$^{{-3}}$, $m$ = {sp0.m_p * 1e18:.2f} fg, "
+            f"$Q_a$ = {sp0.Q_a_lpm:.2f} L/min)"
+        )
+    else:
+        title = (
+            f"APM Transfer Function at Set-point  "
+            f"($Q_a$ = {sp0.Q_a_lpm:.2f} L/min, $\\lambda$ = {sp0.lam:.2f})"
+        )
+
+    ax1.set_xlabel("Particle Mass [fg]")
+    ax1.set_ylabel(r"Transmission Efficiency  $\Omega_{APM}$")
+    ax2.set_xlabel(r"Normalised Mass  $m / m_p$")
+    ax2.set_ylabel(r"Transmission Efficiency  $\Omega_{APM}$")
+    ax2.set_title("Normalised by Target Particle Mass", fontsize=10)
+    fig.suptitle(title, fontsize=11)
+    for ax in (ax1, ax2):
+        ax.set_ylim(0.0, 1.05)
+        ax.legend(fontsize=7)
+        ax.grid(True, linestyle="--", alpha=0.5)
+
+    plt.tight_layout()
+
+    out_dir = os.path.dirname(os.path.abspath(output_path))
+    os.makedirs(out_dir, exist_ok=True)
+    plt.savefig(output_path, dpi=600, format="jpeg", bbox_inches="tight")
+    plt.close()
+    print(f"\nFigure saved: {output_path}")
+
+
+def plot_cluster_transfer_functions(
+    setpoints:   list,
+    clusters:    list,
+    output_path: str,
+) -> None:
+    """Plot monomer and cluster transfer functions at common set-points (JPEG, dpi=600).
+
+    Curves of the same colour share a set-point (typically different lambda);
+    solid: singly charged monomer, dashed: multiply charged cluster.
+
+    Left panel:  Omega_APM versus mass-to-charge ratio m/q [fg per e]
+    Right panel: Omega_APM versus (m/q) / m_p
+
+    Args:
+        setpoints:   List of apm_setpoint.APMSetpoint (monomers)
+        clusters:    List of apm_setpoint.ClusterTransfer (same order)
+        output_path: Output file path (.jpg)
+    """
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    colors = plt.cm.viridis(np.linspace(0.0, 0.85, len(setpoints)))
+    sp0, cl0 = setpoints[0], clusters[0]
+
+    for sp, cl, c in zip(setpoints, clusters, colors):
+        mq_c = cl.m_array / cl.charge
+        lab_m = (f"$\\lambda$ = {sp.lam:.2f}, monomer (q = 1):  RPM = {sp.RPM:.0f}, "
+                 f"V = {sp.V:.1f} V")
+        lab_c = (f"$\\lambda$ = {sp.lam:.2f}, {cl.n_mono}-sphere cluster (q = {cl.charge}):  "
+                 f"$\\lambda_c$ = {cl.lam_eff:.2f}")
+        for ax, x_m, x_c in (
+            (ax1, sp.m_array * 1e18, mq_c * 1e18),
+            (ax2, sp.m_array / sp.m_p, mq_c / sp.m_p),
+        ):
+            ax.plot(x_m, sp.Omega, "-",  color=c, linewidth=2,   label=lab_m)
+            ax.plot(x_c, cl.Omega, "--", color=c, linewidth=1.8, label=lab_c)
+    ax1.axvline(sp0.m_p * 1e18, color="gray", linestyle=":", linewidth=1)
+
+    fig.suptitle(
+        f"APM Transfer Function: Monomer and {cl0.n_mono}-sphere Cluster  "
+        f"($d$ = {sp0.d * 1e9:.0f} nm, $\\rho_{{eff}}$ = {sp0.rho_eff:.0f} kg m$^{{-3}}$, "
+        f"$Q_a$ = {sp0.Q_a_lpm:.2f} L/min, cluster $\\chi$ = {cl0.chi:.2f})",
+        fontsize=11,
+    )
+    ax1.set_xlabel(r"Mass-to-charge Ratio  $m/q$  [fg $e^{-1}$]")
+    ax2.set_xlabel(r"Normalised Mass-to-charge Ratio  $(m/q) / m_p$")
+    ax2.set_title("Normalised by Monomer Mass", fontsize=10)
+    for ax in (ax1, ax2):
+        ax.set_ylabel(r"Transmission Efficiency  $\Omega_{APM}$")
+        ax.set_ylim(0.0, 1.05)
+        ax.legend(fontsize=6.5)
+        ax.grid(True, linestyle="--", alpha=0.5)
+
+    plt.tight_layout()
+
+    out_dir = os.path.dirname(os.path.abspath(output_path))
+    os.makedirs(out_dir, exist_ok=True)
+    plt.savefig(output_path, dpi=600, format="jpeg", bbox_inches="tight")
+    plt.close()
+    print(f"\nFigure saved: {output_path}")

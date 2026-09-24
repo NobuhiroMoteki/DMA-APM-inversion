@@ -245,3 +245,73 @@ def build_kernel_2d(
     print("Computation complete.")
 
     return K, m_array
+
+
+# ------------------------------------------------------------------------------
+# Standalone APM transfer function
+# ------------------------------------------------------------------------------
+
+def classifying_mass(V: float, RPM: float, params) -> float:
+    """Nominal classifying mass of the APM (force balance at the gap centre).
+
+    The centrifugal and electrostatic forces balance at r = rc for
+        m_c = e V / (omega^2 rc^2 ln(r2/r1))
+
+    Args:
+        V:      Applied voltage [V]
+        RPM:    APM rotation speed [rpm]
+        params: User configuration (r1, r2)
+
+    Returns:
+        m_c: Classifying mass [kg] (singly charged particle)
+    """
+    rc    = 0.5 * (params.r1 + params.r2)
+    omega = RPM / 60.0 * 2.0 * np.pi
+    return E_CHARGE * V / (omega**2 * rc**2 * np.log(params.r2 / params.r1))
+
+
+def compute_apm_transfer_function(
+    m_array: np.ndarray,
+    V:       float,
+    RPM:     float,
+    Dmob:    float,
+    params,
+    Q_a_lpm: float | None = None,
+) -> np.ndarray:
+    """Compute the standalone APM transfer function Omega_APM(m; V, Z_p*).
+
+    Uses the same RK4 trajectory simulation and the same coefficients as
+    build_kernel_1d, so that Omega[j] == K[i, j] / Delta_m for V = V_i.
+
+    Args:
+        m_array: Particle mass grid [kg], shape (J,)
+        V:       Applied voltage [V]
+        RPM:     APM rotation speed [rpm]
+        Dmob:    Electrical mobility diameter [m]
+        params:  User configuration (r1, r2, L, Q_a_lpm, dz, nr0)
+        Q_a_lpm: APM aerosol flow rate [L/min]; overrides params.Q_a_lpm if given
+
+    Returns:
+        Omega: Transmission efficiency (0.0 to 1.0), shape (J,)
+    """
+    rc    = 0.5 * (params.r1 + params.r2)
+    delta = 0.5 * (params.r2 - params.r1)
+    Cc    = _cunningham(Dmob)
+    omega = RPM / 60.0 * 2.0 * np.pi
+    Q_lpm = params.Q_a_lpm if Q_a_lpm is None else Q_a_lpm
+    Q     = Q_lpm * 1e-3 / 60.0                    # [m^3/s]
+
+    # Common coefficient of dr/dz: dz x 8/(9*eta) x (Cc/D_mob) x (delta*rc)/Q
+    coef   = params.dz * 8.0 / (9.0 * AIR_VISC) * (Cc / Dmob) * (delta * rc) / Q
+    V_term = E_CHARGE / np.log(params.r2 / params.r1) * V
+    num_steps = int(params.L / params.dz)
+
+    Omega = np.array([
+        _rk4_transmission(
+            m, V, coef, V_term, omega,
+            rc, delta, params.r1, params.r2,
+            params.nr0, num_steps,
+        )
+        for m in m_array
+    ])   # shape: (J,)
+    return Omega

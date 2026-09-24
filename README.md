@@ -59,6 +59,9 @@ DMA-APM-inversion/
 │
 ├── run_1d.py              # Entry point: 1D approximation model (recommended)
 ├── run_2d.py              # Entry point: 2D convolution model (rigorous)
+├── run_transfer_function.py  # Entry point: standalone APM transfer function plot
+├── apm_setpoint.py        # APM set-point (RPM, voltage) for spherical particles
+├── run_apm_setpoint.py    # Entry point: set-point calculation + transfer function output
 │
 ├── test_consistency.py    # Numerical equivalence verification (developer use)
 │
@@ -71,9 +74,10 @@ DMA-APM-inversion/
 | Module | Key functions / classes |
 | --- | --- |
 | `data_parser.py` | `load_and_bin(params)` → `MeasurementData` dataclass |
-| `kernel_simulator.py` | `build_kernel_1d(data, params)`, `build_kernel_2d(data, params)` |
+| `kernel_simulator.py` | `build_kernel_1d(data, params)`, `build_kernel_2d(data, params)`, `compute_apm_transfer_function(m_array, V, RPM, Dmob, params)`, `classifying_mass(V, RPM, params)` |
 | `inversion_solver.py` | `solve_chahine_twomey(K, m_array, data, params)` |
-| `visualization.py` | `fit_gaussian_mode(m_array, f)` → `GaussianFitResult`, `plot_and_save(...)` |
+| `apm_setpoint.py` | `find_apm_setpoint(d, rho_eff, Q_a_lpm, lam, params)` → `APMSetpoint` |
+| `visualization.py` | `fit_gaussian_mode(m_array, f)` → `GaussianFitResult`, `plot_and_save(...)`, `plot_transfer_function(...)`, `plot_setpoint_transfer_functions(...)` |
 
 ---
 
@@ -163,7 +167,27 @@ Figure saved: ./results/result_1d_your_data_file.jpg
 * **Left panel (APM Spectrum)**: Binned measured data (red dots) vs. the reconstructed signal (blue line).
 * **Right panel (Mass Distribution)**: Inverted $dN/dm$ in femtograms (blue line) with the Gaussian fit overlaid (red dashed line). The fit reports peak center $\mu$, standard deviation $\sigma$, and $R^2$.
 
-### 5. Test notebooks (synthetic data)
+### 5. Standalone APM transfer function
+
+To inspect the APM transfer function $\Omega_{APM}(m; V, Z_p^*)$ itself (no measurement data required), set the `TF_*` parameters in `params.py` (rotation speed, mobility diameter, list of voltages, mass range relative to the classifying mass $m_c = eV/[\omega^2 r_c^2 \ln(r_2/r_1)]$) and run:
+
+```bash
+python run_transfer_function.py
+```
+
+The console reports the peak transmission, FWHM, resolution $m_c/\mathrm{FWHM}$, and normalised area for each voltage. The figure `apm_transfer_function_Dmob<D>nm_RPM<RPM>.jpg` is saved to `OUTPUT_DIR` and shows $\Omega_{APM}$ against mass [fg] (left) and against $m/m_c$ (right). The same RK4 simulation and coefficients as `build_kernel_1d` are used, so $\Omega_{APM}$ equals the kernel column $K_{ij}/\Delta m$.
+
+### 6. APM set-point for spherical particles
+
+Given pairs of particle diameter and effective density (`SP_particles`), the APM aerosol flow rate (`SP_Q_a_lpm`) and the resolution parameter $\lambda = 2\tau\omega^2 L/\bar{v}$ (`SP_lambda`; Ehara et al., 1996), run:
+
+```bash
+python run_apm_setpoint.py
+```
+
+The rotation speed follows from the definition of $\lambda$ with $\tau = m C_c/(3\pi\eta d)$, $m = \rho_{eff}\pi d^3/6$ and $\bar{v} = Q_a/[\pi(r_2^2 - r_1^2)]$. The voltage is then chosen so that the mode of the simulated transfer function (midpoint of its top plateau) coincides with the mass of the singly charged particle; because $\Omega_{APM}$ depends on $m$ and $V$ only through $m/V$ at fixed $\omega$, this is done exactly by rescaling the force-balance voltage. For each particle, the console reports RPM, voltage, the simulated mode, peak transmission and FWHM; the transfer function is saved as `apm_setpoint_d<d>nm_rho<rho>_Q<Q>lpm_lam<lambda>.csv`, and all curves are plotted in `apm_setpoint_Q<Q>lpm_lam<lambda>.jpg`.
+
+### 7. Test notebooks (synthetic data)
 
 Two Jupyter notebooks are provided for algorithm development and testing **without requiring real measurement data**. Both use synthetic aerosol distributions (log-normal) with simulated Poisson counting noise as input, so no CSV file is needed.
 
