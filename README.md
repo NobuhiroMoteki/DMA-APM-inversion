@@ -19,6 +19,7 @@ This tool features a proprietary numerical simulation approach for calculating t
 * **Original Kernel Simulation**: Uses an unpublished numerical algorithm utilizing the 4th-order Runge-Kutta (RK4) method to directly simulate particle trajectories within the APM gap, accounting for the parabolic flow profile.
 * **Robust Inversion Algorithm**: Combines the non-negative Chahine-Twomey inversion method with Markowski's 1-2-1 smoothing to effectively suppress overfitting to experimental noise.
 * **Gaussian Mode Analysis**: Automatically fits the dominant mode of the inverted mass distribution with a Gaussian + linear background model, reporting the peak center $\mu$ and standard deviation $\sigma$.
+* **APM Set-point Planning**: Computes the APM rotation speed and voltage for spherical particles at a specified flow rate and resolution parameter $\lambda$. It also simulates the transfer functions of the particle and of multiply charged sphere clusters that pass at the same set-point, and summarises the results in CSV files, figures, and a PDF report.
 
 ---
 
@@ -61,7 +62,8 @@ DMA-APM-inversion/
 ├── run_2d.py              # Entry point: 2D convolution model (rigorous)
 ├── run_transfer_function.py  # Entry point: standalone APM transfer function plot
 ├── apm_setpoint.py        # APM set-point (RPM, voltage) for spherical particles
-├── run_apm_setpoint.py    # Entry point: set-point calculation + transfer function output
+├── run_apm_setpoint.py    # Entry point: set-points, transfer functions, charged clusters
+├── make_setpoint_report.py  # LaTeX/PDF report of the set-point results
 │
 ├── test_consistency.py    # Numerical equivalence verification (developer use)
 │
@@ -76,8 +78,8 @@ DMA-APM-inversion/
 | `data_parser.py` | `load_and_bin(params)` → `MeasurementData` dataclass |
 | `kernel_simulator.py` | `build_kernel_1d(data, params)`, `build_kernel_2d(data, params)`, `compute_apm_transfer_function(m_array, V, RPM, Dmob, params)`, `classifying_mass(V, RPM, params)` |
 | `inversion_solver.py` | `solve_chahine_twomey(K, m_array, data, params)` |
-| `apm_setpoint.py` | `find_apm_setpoint(d, rho_eff, Q_a_lpm, lam, params)` → `APMSetpoint` |
-| `visualization.py` | `fit_gaussian_mode(m_array, f)` → `GaussianFitResult`, `plot_and_save(...)`, `plot_transfer_function(...)`, `plot_setpoint_transfer_functions(...)` |
+| `apm_setpoint.py` | `find_apm_setpoint(d, rho_eff, Q_a_lpm, lam, params)` → `APMSetpoint`, `simulate_cluster(sp, params, n_mono, charge, chi)` → `ClusterTransfer` |
+| `visualization.py` | `fit_gaussian_mode(m_array, f)` → `GaussianFitResult`, `plot_and_save(...)`, `plot_transfer_function(...)`, `plot_setpoint_transfer_functions(...)`, `plot_cluster_transfer_functions(...)` |
 
 ---
 
@@ -175,17 +177,48 @@ To inspect the APM transfer function $\Omega_{APM}(m; V, Z_p^*)$ itself (no meas
 python run_transfer_function.py
 ```
 
-The console reports the peak transmission, FWHM, resolution $m_c/\mathrm{FWHM}$, and normalised area for each voltage. The figure `apm_transfer_function_Dmob<D>nm_RPM<RPM>.jpg` is saved to `OUTPUT_DIR` and shows $\Omega_{APM}$ against mass [fg] (left) and against $m/m_c$ (right). The same RK4 simulation and coefficients as `build_kernel_1d` are used, so $\Omega_{APM}$ equals the kernel column $K_{ij}/\Delta m$.
+The console reports the peak transmission, FWHM, resolution $m_c/\mathrm{FWHM}$, and normalised area for each voltage. The figure `apm_transfer_function_Dmob<D>nm_RPM<RPM>.jpg` is saved to `OUTPUT_DIR` and shows $\Omega_{APM}$ against mass [fg] (left) and against $m/m_c$ (right). The same RK4 simulation and coefficients as `build_kernel_1d` are used, so $\Omega_{APM}$ equals the kernel column $K_{ij}/\Delta m$ (see Sec. 8.1 of the [Technical Note](docs/theory_note.pdf)).
 
-### 6. APM set-point for spherical particles
+### 6. APM set-point planning (spherical particles and charged clusters)
 
-Given pairs of particle diameter and effective density (`SP_particles`), the APM aerosol flow rate (`SP_Q_a_lpm`) and the resolution parameter $\lambda = 2\tau\omega^2 L/\bar{v}$ (`SP_lambda`; Ehara et al., 1996), run:
+This tool computes APM operating set-points for an experiment plan. No measurement data are needed. For a spherical particle of diameter $d$ and effective density $\rho_{eff}$, it gives the rotation speed and voltage at a chosen APM flow rate $Q_a$ and resolution parameter $\lambda = 2\tau\omega^2 L/\bar{v}$ (Ehara et al., 1996). At these settings, the mode of the simulated transfer function coincides with the mass of the singly charged particle. It can also simulate the transfer function of a multiply charged sphere cluster that has the same mass-to-charge ratio, for example a doublet carrying 2 charges. Such clusters pass the APM at the same set-point when no DMA is placed upstream. The theory is given in Sec. 8 of the [Technical Note](docs/theory_note.pdf).
 
-```bash
-python run_apm_setpoint.py
+**(a) Edit the `SP_*` block of `params.py`:**
+
+```python
+SP_particles     = [(303.0, 1050.0), (345.0, 1050.0)]  # (d [nm], rho_eff [kg/m3])
+SP_Q_a_lpm       = 0.46          # APM aerosol flow rate [L/min]
+SP_lambda        = [0.2, 0.5]    # float or list of lambda values
+SP_OUTPUT_DIR    = "./results/exp_plan"
+SP_rel_halfwidth = 1.0           # Mass range: m_p x (1 +/- this)
+SP_num_m         = 401           # Number of mass points
+SP_cluster = {"n_mono": 2, "charge": 2, "chi": 1.12}   # or None to skip
 ```
 
-The rotation speed follows from the definition of $\lambda$ with $\tau = m C_c/(3\pi\eta d)$, $m = \rho_{eff}\pi d^3/6$ and $\bar{v} = Q_a/[\pi(r_2^2 - r_1^2)]$. The voltage is then chosen so that the mode of the simulated transfer function (midpoint of its top plateau) coincides with the mass of the singly charged particle; because $\Omega_{APM}$ depends on $m$ and $V$ only through $m/V$ at fixed $\omega$, this is done exactly by rescaling the force-balance voltage. For each particle, the console reports RPM, voltage, the simulated mode, peak transmission and FWHM; the transfer function is saved as `apm_setpoint_d<d>nm_rho<rho>_Q<Q>lpm_lam<lambda>.csv`, and all curves are plotted in `apm_setpoint_Q<Q>lpm_lam<lambda>.jpg`.
+`chi` is the orientation-averaged dynamic shape factor of the cluster. The value 1.12 is for a two-sphere chain in the continuum regime (Hinds, 1999, Table 3.2).
+
+**(b) Run the calculation, then (optionally) build the PDF report:**
+
+```bash
+python run_apm_setpoint.py       # set-points, transfer functions, figures
+python make_setpoint_report.py   # LaTeX/PDF report (requires latexmk + pdflatex)
+```
+
+**(c) Output** (in `SP_OUTPUT_DIR`):
+
+| File | Content |
+| --- | --- |
+| `apm_setpoint_summary.csv` | Set-point list: $d$, $\rho_{eff}$, $Q_a$, $\lambda$, $m_p$, $\tau$, RPM, $V$, force-balance voltage, simulated mode, peak $\Omega$, FWHM, $m_p$/FWHM |
+| `apm_setpoint_d<d>nm_rho<rho>_Q<Q>lpm_lam<lambda>.csv` | Monomer transfer function (mass [fg], $\Omega_{APM}$) |
+| `apm_setpoint_d<d>nm_..._lam<l1>-<l2>.jpg` | Monomer transfer functions, one figure per particle, all $\lambda$ overlaid (one figure with all particles overlaid if a single $\lambda$ is given) |
+| `apm_cluster_summary.csv` | Cluster: $d_{ve}$, mobility diameter $d_m$, mass, $\lambda_c$, mode in $m/q$, peak $\Omega$, FWHM |
+| `apm_cluster<n>q<q>_d<d>nm_..._lam<lambda>.csv` | Cluster transfer function (cluster mass, $m/q$, $\Omega_{APM}$) |
+| `apm_cluster<n>q<q>_d<d>nm_..._Q<Q>lpm.jpg` | Monomer (solid) vs cluster (dashed) versus $m/q$, per particle |
+| `apm_setpoint_report.pdf` | Conditions, method, set-point and cluster tables, all figures |
+
+For a given APM geometry, the shape of the monomer transfer function versus $m/m_p$ depends only on $\lambda$ (Kanomax APM-3601 nominal geometry: peak $\Omega$ = 0.847 and $m_p$/FWHM = 2.26 at $\lambda$ = 0.2; 0.676 and 5.15 at $\lambda$ = 0.5). Each set-point takes about 40 s on a laptop CPU, and each cluster about 20 s more.
+
+> **Note on $\lambda$:** the definition $\lambda = 2\tau\omega^2L/\bar{v}$ with $\bar{v} = Q_a/[\pi(r_2^2 - r_1^2)]$ is used. If the APM control software uses a different convention, for example without the factor 2, the rotation speed differs by $\sqrt{2}$.
 
 ### 7. Test notebooks (synthetic data)
 

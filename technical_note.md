@@ -2,9 +2,9 @@
 
 **Author:** N. Moteki
 
-**Last updated:** 2026-03-18 (corresponds to DMA-APM-inversion v0.1.2)
+**Last updated:** 2026-09-24
 
-This document provides a self-contained description of the mathematical theory and numerical algorithms implemented in the DMA-APM mass distribution inversion tool. It covers the formulation of the forward problem (1D and 2D integral models), the physical justification for the 1D approximation, the original RK4-based APM transfer function simulation, the Chahine-Twomey inversion algorithm with Markowski smoothing, and the Poisson-statistics-based convergence criterion.
+This document provides a self-contained description of the mathematical theory and numerical algorithms implemented in the DMA-APM mass distribution inversion tool. It covers the formulation of the forward problem (1D and 2D integral models), the physical justification for the 1D approximation, the original RK4-based APM transfer function simulation, the Chahine-Twomey inversion algorithm with Markowski smoothing, and the Poisson-statistics-based convergence criterion. It also describes the use of the standalone transfer function for planning APM set-points (rotation speed and voltage) for spherical particles and multiply charged sphere clusters.
 
 ## Contents
 
@@ -15,8 +15,9 @@ This document provides a self-contained description of the mathematical theory a
 5. [Inversion algorithm: Chahine-Twomey method with internal smoothing](#5-inversion-algorithm-chahine-twomey-method-with-internal-smoothing)
 6. [Poisson variance and convergence criterion](#6-poisson-variance-and-convergence-criterion)
 7. [Data preprocessing: voltage binning](#7-data-preprocessing-voltage-binning)
-8. [Implementation mapping](#8-implementation-mapping)
-9. [References](#9-references)
+8. [APM set-point planning with the standalone transfer function](#8-apm-set-point-planning-with-the-standalone-transfer-function)
+9. [Implementation mapping](#9-implementation-mapping)
+10. [References](#10-references)
 
 ---
 
@@ -241,7 +242,83 @@ The binning procedure strictly distinguishes between intensive and extensive var
 
 This distinction is critical for the correct evaluation of $V_{\mathrm{sample},i} = Q_{\mathrm{CPC}} \cdot t_{\mathrm{meas},i}$, which directly enters the Poisson variance calculation (Eq. 21).
 
-## 8. Implementation mapping
+## 8. APM set-point planning with the standalone transfer function
+
+The RK4 trajectory simulation of Section 4 can also be used on its own, without measurement data, to inspect the APM transfer function and to plan the operating conditions of an experiment. The tools described in this section do not modify the inversion pipeline.
+
+### 8.1 Standalone transfer function
+
+For a given rotation speed $N$ (in rpm; $\omega = 2\pi N/60$), mobility diameter $D_{\mathrm{mob}}$ and voltage $V$, the transfer function $\Omega_{\mathrm{APM}}(m; V)$ is evaluated on a mass grid with exactly the same code and coefficients as the 1D kernel, so that $\Omega_{\mathrm{APM}}(m_j; V_i) = K_{i,j}/\Delta m$. The nominal classifying mass, at which centrifugal and electrostatic forces balance at $r_{\mathrm{c}}$ for a singly charged particle, is
+
+```math
+m_{\mathrm{c}} = \frac{eV}{\omega^2 r_{\mathrm{c}}^2 \ln(r_2/r_1)}. \qquad \textrm{(23)}
+```
+
+### 8.2 Resolution parameter and rotation speed
+
+For a spherical particle of diameter $d$ ($= D_{\mathrm{mob}}$) and effective density $\rho_{\mathrm{eff}}$, the mass, mechanical mobility $B = Z_{\mathrm{p}}/e$ and relaxation time are
+
+```math
+m_{\mathrm{p}} = \frac{\pi}{6} \rho_{\mathrm{eff}} d^3, \qquad B = \frac{C_{\mathrm{c}}(d)}{3\pi\eta d}, \qquad \tau = m_{\mathrm{p}} B. \qquad \textrm{(24)}
+```
+
+With the mean axial velocity $\bar{v} = Q/[\pi(r_2^2 - r_1^2)]$, the resolution parameter of Ehara et al. (1996) and the resulting angular velocity are
+
+```math
+\lambda = \frac{2\tau\omega^2 L}{\bar{v}} \quad\Longrightarrow\quad \omega = \sqrt{\frac{\lambda\bar{v}}{2\tau L}}. \qquad \textrm{(25)}
+```
+
+### 8.3 Voltage matching the transfer-function mode
+
+Eq. (10) depends on $m$ and $V$ only through $m\omega^2 r - eV/[r\ln(r_2/r_1)]$. At fixed $\omega$, $Z_{\mathrm{p}}$ and $Q$, the transfer function is therefore a function of $m/V$ alone, and its mode scales linearly with $V$. Starting from the force-balance voltage
+
+```math
+V_0 = \frac{m_{\mathrm{p}}\omega^2 r_{\mathrm{c}}^2 \ln(r_2/r_1)}{e}, \qquad \textrm{(26)}
+```
+
+the mode $m_0^*$ of $\Omega_{\mathrm{APM}}(m; V_0)$ is located numerically and the voltage is set to
+
+```math
+V = V_0 \, \frac{m_{\mathrm{p}}}{m_0^*}, \qquad \textrm{(27)}
+```
+
+which places the mode exactly at $m_{\mathrm{p}}$. Because the transfer function has a flat top, the mode is defined as the midpoint of the contiguous region where $\Omega_{\mathrm{APM}} \geq 0.99 \max \Omega_{\mathrm{APM}}$. The transfer function is then re-simulated at $(N, V)$ for verification. In practice $V$ differs from $V_0$ by less than $10^{-4}$ (relative) for $\lambda = 0.2$ and by about 0.5% for $\lambda = 0.5$.
+
+Substituting $V \propto m_{\mathrm{p}}\omega^2$ into Eq. (10), the right-hand side becomes proportional to $\tau\omega^2/Q \propto \lambda$ times a function of $m/m_{\mathrm{p}}$ and $r$. Hence, for a given APM geometry, $\Omega_{\mathrm{APM}}$ as a function of $m/m_{\mathrm{p}}$ depends only on $\lambda$; e.g. the peak transmission and resolution are 0.847 and $m_{\mathrm{p}}/\mathrm{FWHM} = 2.26$ for $\lambda = 0.2$, and 0.676 and 5.15 for $\lambda = 0.5$ (Kanomax APM-3601 nominal geometry), independent of $d$, $\rho_{\mathrm{eff}}$ and $Q$. The set-points scale as $N \propto \sqrt{\lambda Q/\tau}$ and $V \propto m_{\mathrm{p}}\omega^2$.
+
+### 8.4 Multiply charged sphere clusters
+
+Without a DMA upstream of the APM, a randomly oriented cluster of $n$ primary spheres carrying $q$ elementary charges with $n/q = 1$ has the same mass-to-charge ratio as the singly charged monomer and is transmitted at the same set-point. Its mobility is approximated by
+
+```math
+d_{\mathrm{ve}} = n^{1/3} d, \qquad d_{\mathrm{m}} = \chi \, d_{\mathrm{ve}}, \qquad B_{\mathrm{c}} = \frac{C_{\mathrm{c}}(d_{\mathrm{m}})}{3\pi\eta d_{\mathrm{m}}}, \qquad \textrm{(28)}
+```
+
+with the orientation-averaged dynamic shape factor $\chi$ (1.12 for a two-sphere chain; Hinds, 1999, Table 3.2; a continuum-regime value). For mass $M = n m_{\mathrm{p}}$ and charge $qe$,
+
+```math
+\frac{dr}{dz} \propto q B_{\mathrm{c}} \left( \frac{M}{q}\omega^2 r - \frac{eV}{r\ln(r_2/r_1)} \right), \qquad \textrm{(29)}
+```
+
+so the cluster transfer function is computed with the monomer code using the voltage $qV$ and the mobility diameter $d_{\mathrm{m}}$. As a function of $M/q$ it has the shape of a monomer transfer function with
+
+```math
+\lambda_{\mathrm{c}} = \frac{2 M B_{\mathrm{c}} \omega^2 L}{\bar{v}}. \qquad \textrm{(30)}
+```
+
+For $n = q = 2$, $\lambda_{\mathrm{c}} \approx 1.26$–$1.31\,\lambda$ in the range $d = 300$–450 nm, so the cluster transfer function is narrower and lower than that of the monomer. For monodisperse primaries the relative counting efficiency at a fixed set-point is $\Omega_{\mathrm{c}}/\Omega_1$ evaluated at $m/q = m_{\mathrm{p}}$; the ratio of areas $\int \Omega_{\mathrm{APM}} \, d(m/q)$ approximates the ratio of voltage-scan-integrated signals. The actual cluster contribution further depends on the cluster concentration and charge distribution.
+
+### 8.5 Usage
+
+All settings are given in `params.py`:
+
+- `TF_*` (standalone transfer function): rotation speed, $D_{\mathrm{mob}}$, list of voltages, and the mass range relative to $m_{\mathrm{c}}$. Run `python run_transfer_function.py`.
+- `SP_*` (set-points): list of $(d, \rho_{\mathrm{eff}})$ pairs (nm, kg m⁻³), $Q$ (L/min), $\lambda$ (a number or a list), mass range relative to $m_{\mathrm{p}}$, and output directory. `SP_cluster` gives $(n, q, \chi)$ of the cluster, or `None` to skip it. Run `python run_apm_setpoint.py`, which writes the transfer functions (CSV), the summary tables `apm_setpoint_summary.csv` and `apm_cluster_summary.csv`, and the figures (for a list of $\lambda$, one figure per particle with all $\lambda$ overlaid).
+- `python make_setpoint_report.py` then assembles the conditions, method, tables and figures into a LaTeX/PDF report (`apm_setpoint_report.pdf`) in the output directory.
+
+One set-point requires two transfer-function simulations of 401 mass points (about 40 s on a laptop CPU with $N_{r_0} = 1000$ and $\Delta z = 0.1$ mm); a cluster requires one more.
+
+## 9. Implementation mapping
 
 | Theory | Implementation | File |
 | --- | --- | --- |
@@ -257,13 +334,16 @@ This distinction is critical for the correct evaluation of $V_{\mathrm{sample},i
 | Chi-squared criterion, Eq. (22) | `solve_chahine_twomey(...)` | [inversion_solver.py](inversion_solver.py) |
 | Voltage binning, Sec. 7 | `load_and_bin(params)` | [data_parser.py](data_parser.py) |
 | Gaussian mode fitting | `fit_gaussian_mode(m_array, f)` | [visualization.py](visualization.py) |
+| Standalone transfer function, Eq. (23) | `compute_apm_transfer_function(...)` | [kernel_simulator.py](kernel_simulator.py) |
+| Set-point, Eq. (25)-(27) | `find_apm_setpoint(...)` | [apm_setpoint.py](apm_setpoint.py) |
+| Cluster, Eq. (28)-(30) | `simulate_cluster(...)` | [apm_setpoint.py](apm_setpoint.py) |
 
-## 9. References
+## 10. References
 
 1. K. Ehara, C. Hagwood, and K. J. Coakley, "Novel method to classify aerosol particles according to their mass-to-charge ratio---Aerosol particle mass analyser," *J. Aerosol Sci.*, vol. 27, no. 2, pp. 217--234, 1996. DOI: [10.1016/0021-8502(96)00014-4](https://doi.org/10.1016/0021-8502(96)00014-4).
 2. S. Twomey, "Comparison of constrained linear inversion and an iterative nonlinear algorithm applied to the indirect estimation of particle size distributions," *J. Comput. Phys.*, vol. 18, no. 2, pp. 188--200, 1975. DOI: [10.1016/0021-9991(75)90028-5](https://doi.org/10.1016/0021-9991(75)90028-5).
 3. G. R. Markowski, "Improving Twomey's algorithm for inversion of aerosol measurement data," *Aerosol Sci. Technol.*, vol. 7, no. 2, pp. 127--141, 1987. DOI: [10.1080/02786828708959153](https://doi.org/10.1080/02786828708959153).
-4. W. C. Hinds, *Aerosol Technology: Properties, Behavior, and Measurement of Airborne Particles*, 2nd ed. Wiley, 1999. Eq. (3.22).
+4. W. C. Hinds, *Aerosol Technology: Properties, Behavior, and Measurement of Airborne Particles*, 2nd ed. Wiley, 1999. Eq. (3.22) and Table 3.2.
 
 ## Acknowledgment
 

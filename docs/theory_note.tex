@@ -12,7 +12,7 @@
 \title{Technical Note: Data Inversion Theory for the DMA-APM-CPC\\
 Tandem Aerosol Measurement System}
 \author{N.~Moteki}
-\date{Last updated: 2026-03-19 (corresponds to DMA-APM-inversion v0.1.2)}
+\date{Last updated: 2026-09-24}
 
 \begin{document}
 \maketitle
@@ -24,7 +24,9 @@ inversion tool.  It covers the formulation of the forward problem (1D and 2D
 integral models), the physical justification for the 1D approximation, the
 original RK4-based APM transfer function simulation, the Chahine--Twomey
 inversion algorithm with Markowski smoothing, and the Poisson-statistics-based
-convergence criterion.
+convergence criterion.  It also describes the use of the standalone transfer
+function for planning APM set-points (rotation speed and voltage) for
+spherical particles and multiply charged sphere clusters.
 \end{abstract}
 
 \tableofcontents
@@ -431,6 +433,162 @@ $V_{\mathrm{sample},i} = Q_{\mathrm{CPC}} \cdot t_{\mathrm{meas},i}$, which
 directly enters the Poisson variance calculation~\eqref{eq:variance-floor}.
 
 %% ====================================================================
+\section{APM set-point planning with the standalone transfer function}
+\label{sec:setpoint}
+%% ====================================================================
+
+The RK4 trajectory simulation of Sec.~\ref{sec:apm-transfer} can also be
+used on its own, without measurement data, to inspect the APM transfer
+function and to plan the operating conditions of an experiment. The tools
+described in this section do not modify the inversion pipeline.
+
+%% --------------------------------------------------------------------
+\subsection{Standalone transfer function}
+\label{sec:standalone-tf}
+%% --------------------------------------------------------------------
+
+For a given rotation speed $N$ (in rpm; $\omega = 2\pi N/60$), mobility
+diameter $D_{\mathrm{mob}}$ and voltage $V$, the transfer function
+$\Omega_{\mathrm{APM}}(m; V)$ is evaluated on a mass grid with exactly the
+same code and coefficients as the 1D kernel, so that
+$\Omega_{\mathrm{APM}}(m_{j}; V_{i}) = K_{i,j}/\Delta m$. The nominal
+classifying mass, at which centrifugal and electrostatic forces balance at
+$r_{\mathrm{c}}$ for a singly charged particle, is
+\begin{equation}
+  m_{\mathrm{c}} = \frac{eV}{\omega^{2} r_{\mathrm{c}}^{2} \ln(r_{2}/r_{1})}.
+  \label{eq:classifying-mass}
+\end{equation}
+
+%% --------------------------------------------------------------------
+\subsection{Resolution parameter and rotation speed}
+\label{sec:lambda}
+%% --------------------------------------------------------------------
+
+For a spherical particle of diameter $d$ ($= D_{\mathrm{mob}}$) and effective
+density $\rho_{\mathrm{eff}}$, the mass, mechanical mobility
+$B = Z_{\mathrm{p}}/e$ and relaxation time are
+\begin{equation}
+  m_{\mathrm{p}} = \frac{\pi}{6} \rho_{\mathrm{eff}} d^{3}, \qquad
+  B = \frac{C_{\mathrm{c}}(d)}{3\pi\eta d}, \qquad
+  \tau = m_{\mathrm{p}} B.
+  \label{eq:sphere-properties}
+\end{equation}
+With the mean axial velocity
+$\bar{v} = Q/[\pi(r_{2}^{2} - r_{1}^{2})]$, the resolution parameter of
+Ehara et al.\ (1996) and the resulting angular velocity are
+\begin{equation}
+  \lambda = \frac{2\tau\omega^{2}L}{\bar{v}}
+  \quad\Longrightarrow\quad
+  \omega = \sqrt{\frac{\lambda\bar{v}}{2\tau L}}.
+  \label{eq:lambda}
+\end{equation}
+
+%% --------------------------------------------------------------------
+\subsection{Voltage matching the transfer-function mode}
+\label{sec:mode-matching}
+%% --------------------------------------------------------------------
+
+Equation~\eqref{eq:motion-rearranged} depends on $m$ and $V$ only through
+$m\omega^{2}r - eV/[r\ln(r_{2}/r_{1})]$. At fixed $\omega$,
+$Z_{\mathrm{p}}$ and $Q$, the transfer function is therefore a function of
+$m/V$ alone, and its mode scales linearly with $V$. Starting from the
+force-balance voltage
+\begin{equation}
+  V_{0} = \frac{m_{\mathrm{p}}\omega^{2} r_{\mathrm{c}}^{2}\ln(r_{2}/r_{1})}{e},
+  \label{eq:force-balance-voltage}
+\end{equation}
+the mode $m_{0}^{*}$ of $\Omega_{\mathrm{APM}}(m; V_{0})$ is located
+numerically and the voltage is set to
+\begin{equation}
+  V = V_{0}\,\frac{m_{\mathrm{p}}}{m_{0}^{*}},
+  \label{eq:mode-voltage}
+\end{equation}
+which places the mode exactly at $m_{\mathrm{p}}$. Because the transfer
+function has a flat top, the mode is defined as the midpoint of the
+contiguous region where
+$\Omega_{\mathrm{APM}} \geq 0.99\max\Omega_{\mathrm{APM}}$. The transfer
+function is then re-simulated at $(N, V)$ for verification. In practice
+$V$ differs from $V_{0}$ by less than $10^{-4}$ (relative) for
+$\lambda = 0.2$ and by about $0.5\%$ for $\lambda = 0.5$.
+
+Substituting $V \propto m_{\mathrm{p}}\omega^{2}$ into
+\eqref{eq:motion-rearranged}, the right-hand side becomes proportional to
+$\tau\omega^{2}/Q \propto \lambda$ times a function of $m/m_{\mathrm{p}}$ and
+$r$. Hence, for a given APM geometry, $\Omega_{\mathrm{APM}}$ as a function
+of $m/m_{\mathrm{p}}$ depends only on $\lambda$; e.g.\ the peak transmission
+and resolution are $0.847$ and $m_{\mathrm{p}}/\mathrm{FWHM} = 2.26$ for
+$\lambda = 0.2$, and $0.676$ and $5.15$ for $\lambda = 0.5$ (Kanomax APM-3601
+nominal geometry), independent of $d$, $\rho_{\mathrm{eff}}$ and $Q$. The
+set-points scale as $N \propto \sqrt{\lambda Q/\tau}$ and
+$V \propto m_{\mathrm{p}}\omega^{2}$.
+
+%% --------------------------------------------------------------------
+\subsection{Multiply charged sphere clusters}
+\label{sec:cluster}
+%% --------------------------------------------------------------------
+
+Without a DMA upstream of the APM, a randomly oriented cluster of $n$
+primary spheres carrying $q$ elementary charges with $n/q = 1$ has the same
+mass-to-charge ratio as the singly charged monomer and is transmitted at the
+same set-point. Its mobility is approximated by
+\begin{equation}
+  d_{\mathrm{ve}} = n^{1/3} d, \qquad
+  d_{\mathrm{m}} = \chi\, d_{\mathrm{ve}}, \qquad
+  B_{\mathrm{c}} = \frac{C_{\mathrm{c}}(d_{\mathrm{m}})}{3\pi\eta d_{\mathrm{m}}},
+  \label{eq:cluster-mobility}
+\end{equation}
+with the orientation-averaged dynamic shape factor $\chi$ ($1.12$ for a
+two-sphere chain; Hinds, 1999, Table~3.2; a continuum-regime value). For
+mass $M = n m_{\mathrm{p}}$ and charge $qe$,
+\begin{equation}
+  \frac{\dd r}{\dd z} \propto q B_{\mathrm{c}}
+  \left( \frac{M}{q}\omega^{2}r - \frac{eV}{r\ln(r_{2}/r_{1})} \right),
+  \label{eq:cluster-motion}
+\end{equation}
+so the cluster transfer function is computed with the monomer code using the
+voltage $qV$ and the mobility diameter $d_{\mathrm{m}}$. As a function of
+$M/q$ it has the shape of a monomer transfer function with
+\begin{equation}
+  \lambda_{\mathrm{c}} = \frac{2 M B_{\mathrm{c}} \omega^{2} L}{\bar{v}}.
+  \label{eq:cluster-lambda}
+\end{equation}
+For $n = q = 2$, $\lambda_{\mathrm{c}} \approx 1.26$--$1.31\,\lambda$ in the
+range $d = 300$--\SI{450}{\nano\meter}, so the cluster transfer function is
+narrower and lower than that of the monomer. For monodisperse primaries the
+relative counting efficiency at a fixed set-point is
+$\Omega_{\mathrm{c}}/\Omega_{1}$ evaluated at $m/q = m_{\mathrm{p}}$; the
+ratio of areas $\int\Omega_{\mathrm{APM}}\,\dd(m/q)$ approximates the ratio of
+voltage-scan-integrated signals. The actual cluster contribution further
+depends on the cluster concentration and charge distribution.
+
+%% --------------------------------------------------------------------
+\subsection{Usage}
+\label{sec:setpoint-usage}
+%% --------------------------------------------------------------------
+
+All settings are given in \texttt{params.py}:
+\begin{itemize}
+  \item \texttt{TF\_*} (standalone transfer function): rotation speed,
+    $D_{\mathrm{mob}}$, list of voltages, and the mass range relative to
+    $m_{\mathrm{c}}$. Run \texttt{python run\_transfer\_function.py}.
+  \item \texttt{SP\_*} (set-points): list of $(d, \rho_{\mathrm{eff}})$ pairs
+    (\si{\nano\meter}, \si{\kilo\gram\per\meter\cubed}), $Q$ (L/min),
+    $\lambda$ (a number or a list), mass range relative to
+    $m_{\mathrm{p}}$, and output directory. \texttt{SP\_cluster} gives
+    $(n, q, \chi)$ of the cluster, or \texttt{None} to skip it. Run
+    \texttt{python run\_apm\_setpoint.py}, which writes the transfer
+    functions (CSV), the summary tables \texttt{apm\_setpoint\_summary.csv}
+    and \texttt{apm\_cluster\_summary.csv}, and the figures (for a list of
+    $\lambda$, one figure per particle with all $\lambda$ overlaid).
+  \item \texttt{python make\_setpoint\_report.py} then assembles the
+    conditions, method, tables and figures into a LaTeX/PDF report
+    (\texttt{apm\_setpoint\_report.pdf}) in the output directory.
+\end{itemize}
+One set-point requires two transfer-function simulations of 401 mass points
+(about \SI{40}{\second} on a laptop CPU with $N_{r_{0}} = 1000$ and
+$\Delta z = \SI{0.1}{\milli\meter}$); a cluster requires one more.
+
+%% ====================================================================
 \section{Implementation mapping}
 \label{sec:implementation}
 %% ====================================================================
@@ -442,6 +600,7 @@ corresponding function and source file.
   \caption{Mapping from theory to implementation.}
   \label{tab:implementation}
   \centering
+  \small
   \begin{tabular}{lll}
     \toprule
     Theory & Implementation & File \\
@@ -482,6 +641,15 @@ corresponding function and source file.
     Gaussian mode fitting
       & \texttt{fit\_gaussian\_mode(m\_array, f)}
       & \texttt{visualization.py} \\
+    Standalone transfer function, \eqref{eq:classifying-mass}
+      & \texttt{compute\_apm\_transfer\_function(\ldots)}
+      & \texttt{kernel\_simulator.py} \\
+    Set-point, \eqref{eq:lambda}--\eqref{eq:mode-voltage}
+      & \texttt{find\_apm\_setpoint(\ldots)}
+      & \texttt{apm\_setpoint.py} \\
+    Cluster, \eqref{eq:cluster-mobility}--\eqref{eq:cluster-lambda}
+      & \texttt{simulate\_cluster(\ldots)}
+      & \texttt{apm\_setpoint.py} \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -516,7 +684,7 @@ corresponding function and source file.
 
   \item W.~C.~Hinds,
     \textit{Aerosol Technology: Properties, Behavior, and Measurement of
-    Airborne Particles}, 2nd~ed.\ Wiley, 1999.  Eq.~(3.22).
+    Airborne Particles}, 2nd~ed.\ Wiley, 1999.  Eq.~(3.22) and Table~3.2.
 \end{enumerate}
 
 \bigskip
