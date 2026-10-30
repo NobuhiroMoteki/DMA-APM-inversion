@@ -28,3 +28,9 @@ docs/*.synctex.gz
 
 # Windows Zone.Identifier alternate data streams
 *:Zone.Identifier
+
+# Private companion repository (2026+ data, unpublished analyses)
+private/
+# Safety net: data from 2026 onwards belong to private/ (the already-published
+# README sample FS_Dmob450nm_try2 stays tracked)
+APM-CPC_data/DMA-APMscan-CPC_202[6-9]*/
