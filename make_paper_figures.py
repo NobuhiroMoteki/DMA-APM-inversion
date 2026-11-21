@@ -187,14 +187,14 @@ def _make_panel_figure(
 
     fig.tight_layout(rect=[0.05, 0, 1, 1], h_pad=1.0, w_pad=1.6)
 
-    # Row labels (Dmob common across each row), placed at the figure's left
+    # Row labels (d_mob common across each row; lower case as in the paper text), placed at the figure's left
     # edge using the post-layout axes positions of the leftmost column.
     for row, d in enumerate(rows):
         bbox = axes[row, 0].get_position()
         fig.text(
             x=0.015,
             y=bbox.y0 + bbox.height / 2.0,
-            s=f"$D_\\mathrm{{mob}}$ = {d['dmob_label']} nm",
+            s=f"$d_\\mathrm{{mob}}$ = {d['dmob_label']} nm",
             rotation=90, ha="center", va="center", fontsize=11,
         )
 
